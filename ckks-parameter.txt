@@ -1,0 +1,10 @@
+Table 1 of https://arxiv.org/pdf/2202.07994.pd
+
+128-bit Security 192-bit Security 256-bit Security
+N Max-size-of-q Max-size-of-q Max-size-of-q
+1024 27 19 14
+2048 54 37 29
+4098 109 75 58
+8192 218 152 118
+16384 438 305 237
+32768 881 611 476
