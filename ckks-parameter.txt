@@ -1,4 +1,4 @@
-Table 1 of https://arxiv.org/pdf/2202.07994.pd
+Table 1 of https://arxiv.org/pdf/2202.07994.pdf
 
 128-bit Security 192-bit Security 256-bit Security
 N Max-size-of-q Max-size-of-q Max-size-of-q
