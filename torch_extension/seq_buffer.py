@@ -1,25 +1,24 @@
 import torch
 import torch.nn as nn
+from collections import defaultdict
+
 from .shortcut import ShortCut
 
-class SequentialBuffer(nn.Sequential):
+class SequentialShortcut(nn.Sequential):
     def __init__(self, *args):
         super().__init__(*args)
-        # TODO: bind buffer to addition layer. Make addition layer work with forward(x)
-        self.to_buffer = []
+        self.bindings = defaultdict(list)
         for i, lyr in enumerate(self):
             if isinstance(lyr, ShortCut):
-                idx = i + lyr.otherlayer
-                self.to_buffer.append(idx)
+                idx = i + lyr.relOther + 1
+                self.bindings[idx].append(i)
+        # print(self.bindings)
 
-    def forward(self, input):
-        d = input
-        buffer = { -1: input }
+    def forward(self, x:torch.Tensor) -> torch.Tensor:
+        d = x
         for i, lyr in enumerate(self):
-            if isinstance(lyr, ShortCut):
-                d = lyr(d, buffer[i + lyr.otherlayer])
-            else:
-                d = lyr(d)
-            if i in self.to_buffer:
-                buffer[i] = d
+            if i in self.bindings:
+                for j in self.bindings[i]:
+                    self[j].update(d)
+            d = lyr(d)
         return d

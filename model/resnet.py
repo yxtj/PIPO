@@ -21,7 +21,7 @@ def build_downsample_block(in_channels, out_channels, stride, batch_norm):
             nn.BatchNorm2d(out_channels),
         ]
         if stride == 1:
-            layers.append(te.ShortCut(-6))
+            layers.append(te.Addition(-6))
     else:
         layers = [
             conv3x3(in_channels, out_channels, stride),
@@ -29,7 +29,7 @@ def build_downsample_block(in_channels, out_channels, stride, batch_norm):
             conv3x3(out_channels, out_channels),
         ]
         if stride == 1:
-            layers.append(te.ShortCut(-4))
+            layers.append(te.Addition(-4))
     layers.append(nn.ReLU())
     return layers
     
@@ -41,7 +41,7 @@ def build_identity_block(channels, batch_norm):
             nn.ReLU(),
             conv3x3(channels, channels),
             nn.BatchNorm2d(channels),
-            te.ShortCut(-6),
+            te.Addition(-6),
             nn.ReLU(),
         ]
     else:
@@ -49,7 +49,7 @@ def build_identity_block(channels, batch_norm):
             conv3x3(channels, channels),
             nn.ReLU(),
             conv3x3(channels, channels),
-            te.ShortCut(-4),
+            te.Addition(-4),
             nn.ReLU(),
         ]
     return layers
@@ -94,10 +94,9 @@ def build_resnet(num_blocks, num_class=100, version=1, residual=True, batch_norm
             nn.Linear(1024, num_class),
         ])
     if not residual:
-        layers = [ lyr for lyr in layers if not isinstance(lyr, te.ShortCut) ]
+        layers = [ lyr for lyr in layers if not isinstance(lyr, te.Addition) ]
     #layers.append(nn.Softmax(dim=1))
-    return te.SequentialBuffer(*layers)
-
+    return te.SequentialShortcut(*layers)
 
 def resnet20(version=3, residual=True, batch_norm=False):
     return build_resnet([3, 3, 3], 100, version, residual, batch_norm)
@@ -116,7 +115,6 @@ def resnet110(version=3, residual=True, batch_norm=False):
 
 def resnet152(version=3, residual=True, batch_norm=False):
     return build_resnet([24, 24, 24], 100, version, residual, batch_norm)
-
 
 def build(depth, version=3, residual=True, batch_norm=False):
     if depth == 20:

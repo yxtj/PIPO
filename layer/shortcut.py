@@ -19,7 +19,7 @@ class ShortCutServer(LayerServer):
         assert isinstance(layer, ShortCut)
         assert ishape == oshape
         super().__init__(socket, ishape, oshape, layer)
-        self.other_offset = layer.otherlayer
+        self.other_offset = layer.relOther
     
     def offline(self, rm_j) -> torch.Tensor:
         t = time.time()
