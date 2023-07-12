@@ -5,8 +5,10 @@ from typing import Union
 import numpy as np
 import time
 import torch
-from torch_extension.shortcut import ShortCut
+from torch_extension.shortcut import ShortCut, Addition, Concatenation
 from Pyfhel import Pyfhel
+
+# abstract shortcut layer
 
 class ShortCutClient(LayerClient):
     def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel) -> None:
@@ -20,20 +22,61 @@ class ShortCutServer(LayerServer):
         assert ishape == oshape
         super().__init__(socket, ishape, oshape, layer)
         self.other_offset = layer.relOther
-    
-    def offline(self, rm_j) -> torch.Tensor:
+        self.buff = None # used and cleaned by offline only
+
+    def update_offline(self, buff: Union[np.ndarray, torch.Tensor]) -> None:
+        self.buff = buff
+
+    def update_online(self, buff: torch.Tensor) -> None:
+        self.layer.update(buff)
+
+    def online(self) -> torch.Tensor:
         t = time.time()
-        rm_i = self.protocol.recv_offline() # r_i/m_{i-1}
-        data = rm_i + rm_j # r_i / m_{i-1} + r_j / m_{j-1}
-        self.protocol.send_offline(data)
-        self.stat.time_offline += time.time() - t
-        return rm_i
-    
-    def online(self, xmr_j) -> torch.Tensor:
-        t = time.time()
-        xrm_i = self.protocol.recv_online() # x_i - r_i / m_{i-1}
-        data = xrm_i + xmr_j # (x_i + x_j) - (r_i / m_{i-1} - r_j / m_{j-1})
+        xrm_i = self.protocol.recv_online()
+        data = self.layer(xrm_i)
+        # data = self.layer.forward2(self.y, xrm_i)
         self.protocol.send_online(data)
         self.stat.time_online += time.time() - t
         return xrm_i
+
+# addition layer
+
+class AdditionClient(ShortCutClient):
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel) -> None:
+        super().__init__(socket, ishape, oshape, he)
+
+
+class AdditionServer(ShortCutServer):
+    def offline(self) -> torch.Tensor:
+        t = time.time()
+        rm_i = self.protocol.recv_offline() # r_i/m_{i-1}
+        data = self.buff + rm_i # r_i / m_{i-1} + r_j / m_{j-1}
+        self.protocol.send_offline(data)
+        self.buff = None
+        self.stat.time_offline += time.time() - t
+        return rm_i
+    
+# concatenation layer
+
+class ConcatenationClient(ShortCutClient):
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel) -> None:
+        super().__init__(socket, ishape, oshape, he)
+
+
+class ConcatenationServer(ShortCutServer):
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module) -> None:
+        assert isinstance(layer, ShortCut)
+        assert ishape == oshape
+        super().__init__(socket, ishape, oshape, layer)
+        self.dim = layer.dim
+        self.other_offset = layer.relOther
+    
+    def offline(self) -> torch.Tensor:
+        t = time.time()
+        rm_i = self.protocol.recv_offline()
+        data = np.concatenate((self.buff, rm_i), axis=self.dim)
+        self.protocol.send_offline(data)
+        self.buff = None
+        self.stat.time_offline += time.time() - t
+        return rm_i
     

@@ -47,11 +47,13 @@ def make_client_model(socket, model, inshape, he):
         elif isinstance(lyr, nn.Flatten):
             layers.append(layer.FlattenClient(socket, shapes[i], shapes[i+1], he))
             locals.append(i)
-        elif isinstance(lyr, te.ShortCut):
-            layers.append(layer.ShortCutClient(socket, shapes[i], shapes[i+1], he))
+        elif isinstance(lyr, te.Addition):
+            layers.append(layer.AdditionClient(socket, shapes[i], shapes[i+1], he))
             idx = i + lyr.relOther # lyr.relOther is a negative index
-            assert not isinstance(model[idx], layer.LocalLayerClient),\
-                "Shortcut input should not be a local layer. Checking the model or adding an identity layer."
+            scl[i] = idx
+        elif isinstance(lyr, te.Concatenation):
+            layers.append(layer.ConcatenationClient(socket, shapes[i], shapes[i+1], he))
+            idx = i + lyr.relOther
             scl[i] = idx
         elif isinstance(lyr, nn.Identity):
             layers.append(layer.IdentityClient(socket, shapes[i], shapes[i+1], he))
@@ -65,10 +67,12 @@ def make_client_model(socket, model, inshape, he):
     # set shortcuts inputs
     shortcuts = {} # {shortcut layer idx: input layer idx}
     for idx, oidx in scl.items():
-        oidx += 1 # move to the outputo of the layer
+        oidx += 1 # move to the output of the layer
         if isinstance(layers[oidx], layer.LocalLayerClient):
-            raise Exception("Shortcut input should not be a local layer.")
+            msg = "Shortcut {} input should not be a local layer. Checking the model or adding an identity layer.".format(idx)
+            raise Exception(msg)
         shortcuts[idx] = oidx
+    # shortcuts is {shortcut layer idx: intermediate result idx}
     return layers, linears, shortcuts, locals
 
 
@@ -96,11 +100,13 @@ def make_server_model(socket, model, inshape):
         elif isinstance(lyr, nn.Flatten):
             layers.append(layer.FlattenServer(socket, shapes[i], shapes[i+1], lyr))
             locals.append(i)
-        elif isinstance(lyr, te.ShortCut):
-            layers.append(layer.ShortCutServer(socket, shapes[i], shapes[i+1], lyr))
+        elif isinstance(lyr, te.Addition):
+            layers.append(layer.AdditionServer(socket, shapes[i], shapes[i+1], lyr))
             idx = i + lyr.relOther # lyr.relOther is a negative index
-            assert not isinstance(model[idx], layer.LocalLayerServer),\
-                "Shortcut input should not be a local layer. Checking the model or adding an identity layer."
+            scl[i] = idx
+        elif isinstance(lyr, te.Concatenation):
+            layers.append(layer.ConcatenationServer(socket, shapes[i], shapes[i+1], lyr))
+            idx = i + lyr.relOther
             scl[i] = idx
         elif isinstance(lyr, nn.Identity):
             layers.append(layer.IdentityServer(socket, shapes[i], shapes[i+1], lyr))
@@ -114,10 +120,12 @@ def make_server_model(socket, model, inshape):
     # set shortcuts inputs
     shortcuts = {} # {shortcut layer idx: input layer idx}
     for idx, oidx in scl.items():
-        oidx += 1 # move to the outputo of the layer
+        oidx += 1 # move the layer index to the index of intermediate result
         if isinstance(layers[oidx], layer.LocalLayerServer):
-            raise Exception("Shortcut input should not be a local layer.")
+            msg = "Shortcut {} input should not be a local layer. Checking the model or adding an identity layer.".format(idx)
+            raise Exception(msg)
         shortcuts[idx] = oidx
+    # shortcuts is {shortcut layer idx: intermediate result idx}
     return layers, linears, shortcuts, locals
 
 
