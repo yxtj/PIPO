@@ -1,25 +1,31 @@
 import torch
 import torch.nn as nn
-import torch_extension.shortcut as te
+import torch_extension as te
 
 from layer_basic.stat import Stat
 
 
-# from setting import PROTOCOL
-# if PROTOCOL == 'dual':
-#     import layer_dual as layer
-# else:
-#     import layer_smp as layer
 import layer
 
 def compute_shape(model, inshape):
-    if len(inshape) == 3:
-        inshape = (1, *inshape)
+    # TODO: optimize this function to remove the dummy execution of the model
+    # if len(inshape) == 3 or len(inshape) == 1:
+    inshape = (1, *inshape)
     t = torch.zeros(inshape)
     shapes = [inshape]
-    for i, lyr in enumerate(model):
-        t = lyr(t)
-        shapes.append(tuple(t.shape))
+    if isinstance(model, te.SequentialShortcut):
+        for i, lyr in enumerate(model):
+            if i in model.dependency:
+                for j in model.dependency[i]:
+                    model[j].update(t)
+            t = lyr(t)
+            shapes.append(tuple(t.shape))
+    elif isinstance(model, nn.Sequential):
+        for i, lyr in enumerate(model):
+            t = lyr(t)
+            shapes.append(tuple(t.shape))
+    else:
+        raise Exception("Model should be either Sequential or SequentialShortcut.")
     return shapes
 
     
