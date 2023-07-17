@@ -1,4 +1,4 @@
-from .shortcut import ShortCut, Addition, Concatenation
+from .shortcut import *
 
 from .seqsc import SequentialShortcut
 

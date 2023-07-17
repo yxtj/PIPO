@@ -5,21 +5,19 @@ from typing import Union
 import numpy as np
 import time
 import torch
-from torch_extension.shortcut import ShortCut, Addition, Concatenation
+from torch_extension.shortcut import ShortCut, Jump, Addition, Concatenation
 from Pyfhel import Pyfhel
 
 # abstract shortcut layer
 
 class ShortCutClient(LayerClient):
     def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel) -> None:
-        assert ishape == oshape
         super().__init__(socket, ishape, oshape, he)
 
 
 class ShortCutServer(LayerServer):
     def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module) -> None:
         assert isinstance(layer, ShortCut)
-        assert ishape == oshape
         super().__init__(socket, ishape, oshape, layer)
         self.other_offset = layer.relOther
         self.buff = None # used and cleaned by offline only
@@ -43,10 +41,16 @@ class ShortCutServer(LayerServer):
 
 class AdditionClient(ShortCutClient):
     def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel) -> None:
+        assert ishape == oshape
         super().__init__(socket, ishape, oshape, he)
 
 
 class AdditionServer(ShortCutServer):
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module) -> None:
+        assert isinstance(layer, Addition)
+        assert ishape == oshape
+        super().__init__(socket, ishape, oshape, layer)
+
     def offline(self) -> torch.Tensor:
         t = time.time()
         rm_i = self.protocol.recv_offline() # r_i/m_{i-1}
@@ -65,8 +69,7 @@ class ConcatenationClient(ShortCutClient):
 
 class ConcatenationServer(ShortCutServer):
     def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module) -> None:
-        assert isinstance(layer, ShortCut)
-        assert ishape == oshape
+        assert isinstance(layer, Concatenation)
         super().__init__(socket, ishape, oshape, layer)
         self.dim = layer.dim
         self.other_offset = layer.relOther
@@ -74,7 +77,10 @@ class ConcatenationServer(ShortCutServer):
     def offline(self) -> torch.Tensor:
         t = time.time()
         rm_i = self.protocol.recv_offline()
-        data = np.concatenate((self.buff, rm_i), axis=self.dim)
+        if isinstance(rm_i, torch.Tensor):
+            data = torch.cat((self.buff, rm_i), dim=self.dim)
+        else: # numpy
+            data = np.concatenate((self.buff, rm_i), axis=self.dim)
         self.protocol.send_offline(data)
         self.buff = None
         self.stat.time_offline += time.time() - t

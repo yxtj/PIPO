@@ -55,13 +55,32 @@ map["0-avg"] = (Poc0Inshape_p, Poc0Model_a)
 # Shape: 2 -> 2
 
 Poc0Inshape_s = (2,)
-Poc0Model_s = te.SequentialShortcut(
-# nn.Sequential(
+Poc0Model_sa = te.SequentialShortcut(
     nn.Linear(2, 2),
     nn.Linear(2, 2),
     te.Addition(-2)
 )
-map["0-add"] = (Poc0Inshape_s, Poc0Model_s)
+map["0-add"] = (Poc0Inshape_s, Poc0Model_sa)
+
+# Model 0 shortcut concat:
+# Shape: 2 -> 2 -> 4
+
+Poc0Model_sc = te.SequentialShortcut(
+    nn.Linear(2, 2),
+    nn.Linear(2, 2),
+    te.Concatenation(-2)
+)
+map["0-con"] = (Poc0Inshape_s, Poc0Model_sc)
+
+# Model 0 shortcut jump:
+# Shape: 2 -> 3 -> 4 -> 2
+
+Poc0Model_sj = te.SequentialShortcut(
+    nn.Linear(2, 3),
+    nn.Linear(3, 4),
+    te.Jump(-2)
+)
+map["0-jmp"] = (Poc0Inshape_s, Poc0Model_sj)
 
 # Model 1:
 # Shape: 1x10x10 -> 5x8x8  -> 10x6x6 -> 360 -> 10

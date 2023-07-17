@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+__ALL__ = ['ShortCut', 'Jump', 'Addition', 'Concatenation']
+
 class ShortCut(nn.Module):
     '''
     An abstract shortcut layer that connects the output of the previous layer
@@ -26,6 +28,19 @@ class ShortCut(nn.Module):
     def forward(self, x:torch.Tensor) -> torch.Tensor:
         # put the early layer's data (y) before the later one (x)
         return self.forward2(self.y, x)
+
+# %% jump layer
+
+class Jump(ShortCut):
+    '''
+    Copy the output of an early layer. (Make a flywire connection)
+    '''
+    def __init__(self, relOther:int) -> None:
+        assert relOther != -1, "It is trivial to connect to the last layer."
+        super().__init__(relOther)
+
+    def forward2(self, x:torch.Tensor, y:torch.Tensor) -> torch.Tensor:
+        return x
 
 # %% addition layer
 
