@@ -53,6 +53,10 @@ def make_client_model(socket, model, inshape, he):
         elif isinstance(lyr, nn.Flatten):
             layers.append(layer.FlattenClient(socket, shapes[i], shapes[i+1], he))
             locals.append(i)
+        elif isinstance(lyr, te.Jump):
+            layers.append(layer.JumpClient(socket, shapes[i], shapes[i+1], he))
+            idx = i + lyr.relOther
+            scl[i] = idx
         elif isinstance(lyr, te.Addition):
             layers.append(layer.AdditionClient(socket, shapes[i], shapes[i+1], he))
             idx = i + lyr.relOther # lyr.relOther is a negative index
@@ -106,6 +110,10 @@ def make_server_model(socket, model, inshape):
         elif isinstance(lyr, nn.Flatten):
             layers.append(layer.FlattenServer(socket, shapes[i], shapes[i+1], lyr))
             locals.append(i)
+        elif isinstance(lyr, te.Jump):
+            layers.append(layer.JumpServer(socket, shapes[i], shapes[i+1], lyr))
+            idx = i + lyr.relOther
+            scl[i] = idx
         elif isinstance(lyr, te.Addition):
             layers.append(layer.AdditionServer(socket, shapes[i], shapes[i+1], lyr))
             idx = i + lyr.relOther # lyr.relOther is a negative index

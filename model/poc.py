@@ -139,7 +139,7 @@ map["3"] = (Poc3Inshape, Poc3Model)
 # Shape: 10 -relu-> 10 -add(-2)-> 10 -> 5
 
 Poc4Inshape = (10,)
-Poc4Model = te.SequentialShortcut(
+Poc4Model_a = te.SequentialShortcut(
     nn.Linear(10, 10),
     nn.ReLU(),
     nn.Linear(10, 10),
@@ -147,7 +147,17 @@ Poc4Model = te.SequentialShortcut(
     nn.ReLU(),
     nn.Linear(10, 5),
 )
-map["4"] = (Poc4Inshape, Poc4Model)
+map["4"] = (Poc4Inshape, Poc4Model_a)
+
+Poc4Model_j = te.SequentialShortcut(
+    nn.Linear(10, 10),
+    nn.ReLU(),
+    nn.Linear(10, 10),
+    nn.ReLU(),
+    te.Jump(-3),
+    nn.Linear(10, 5),
+)
+map["4-jmp"] = (Poc4Inshape, Poc4Model_j)
 
 # Model 5:
 # Shape: 1x10x10 -conv-> 5x8x8 -conv-> 5x8x8 -add(-3)-> 5x8x8 -> 320 -> 10
@@ -165,3 +175,25 @@ Poc5Model = te.SequentialShortcut(
     nn.Linear(320, 10),
 )
 map["5"] = (Poc5Inshape, Poc5Model)
+
+# Model 6:
+#                              -conv1-> 4x8x8
+# Shape: 1x10x10 -conv-> 5x8x8                -conc(-3)-> 10x8x8 -> 640 -> 10
+#                              -conv2-> 6x8x8
+
+Poc6Inshape = (1, 10, 10)
+Poc6Model = te.SequentialShortcut(
+    nn.Conv2d(1, 5, 3),
+    nn.ReLU(),
+    nn.Conv2d(5, 4, 3, 1, 1), # conv1
+    nn.ReLU(),
+    te.Jump(-3), # jump
+    nn.Conv2d(5, 6, 3, 1, 1), # conv2
+    nn.ReLU(),
+    te.Concatenation(-4), # concat
+    nn.Conv2d(10, 10, 3, 1, 1),
+    nn.ReLU(),
+    nn.Flatten(),
+    nn.Linear(640, 10),
+)
+map["6"] = (Poc6Inshape, Poc6Model)

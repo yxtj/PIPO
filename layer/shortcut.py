@@ -37,6 +37,27 @@ class ShortCutServer(LayerServer):
         self.stat.time_online += time.time() - t
         return xrm_i
 
+# jump layer 
+
+class JumpClient(ShortCutClient):
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel) -> None:
+        super().__init__(socket, ishape, oshape, he)
+
+
+class JumpServer(ShortCutServer):
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module) -> None:
+        assert isinstance(layer, Jump)
+        super().__init__(socket, ishape, oshape, layer)
+
+    def offline(self) -> torch.Tensor:
+        t = time.time()
+        rm_i = self.protocol.recv_offline()
+        data = self.buff
+        self.protocol.send_offline(data)
+        self.buff = None
+        self.stat.time_offline += time.time() - t
+        return rm_i
+
 # addition layer
 
 class AdditionClient(ShortCutClient):
