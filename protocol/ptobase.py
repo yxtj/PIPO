@@ -13,6 +13,9 @@ from setting import USE_HE
 
 NumberType = Union[int, float, torch.Tensor, np.ndarray]
 
+# Protocol API: setup, send_online, recv_online, send_offline, recv_offline
+# The send/recv methods should be state-free functions.
+
 class ProtocolBase():
     def __init__(self, s: socket.socket, stat: Stat, he: Pyfhel):
         self.socket = s
