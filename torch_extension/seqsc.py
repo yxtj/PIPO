@@ -12,9 +12,10 @@ class SequentialShortcut(nn.Sequential):
         self.dependency = defaultdict(list) # {intermediate_result_idx: [shortcut_layer_idx]}
         for i, lyr in enumerate(self):
             if isinstance(lyr, ShortCut):
-                idx = i + lyr.relOther
-                self.shortcuts[i] = idx
-                self.dependency[idx + 1].append(i)
+                for j in lyr.relOther:
+                    idx = i + j
+                    self.shortcuts[i] = idx
+                    self.dependency[idx + 1].append(i)
         # print(self.dependency)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -22,7 +23,7 @@ class SequentialShortcut(nn.Sequential):
         for i, lyr in enumerate(self):
             if i in self.dependency:
                 for j in self.dependency[i]:
-                    self[j].update(d)
+                    self[j].update(i-j-1, d)
             d = lyr(d)
         return d
 

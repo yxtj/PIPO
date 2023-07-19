@@ -1,3 +1,5 @@
+from typing import List, Union
+from collections import OrderedDict
 import torch
 import torch.nn as nn
 
@@ -7,27 +9,21 @@ class ShortCut(nn.Module):
     '''
     An abstract shortcut layer that connects the output of the previous layer
      with the output of another layer.
-    @param relOther: The relateive index of the other layer to connect to. (-1 is the last layer)
+    @param relOther: The relateive index(indices) of the other layer to connect to. (-1 is the last layer)
     '''
-    def __init__(self, relOther:int) -> None:
+    def __init__(self, relOther:Union[int, List[int]]) -> None:
         super().__init__()
-        assert relOther < 0
+        if isinstance(relOther, int):
+            relOther = [relOther]
+        assert all(e<0 for e in relOther)
         self.relOther = relOther
-        self.y = 0
-    
-    def forward2(self, x:torch.Tensor, y:torch.Tensor) -> torch.Tensor:
-        '''
-        The actual forward function. 
-        "x" is the output of ealiest layer. "y" is the output of the previous layer.
-        '''
-        raise NotImplementedError
+        self.buffer = OrderedDict((e,None) for e in relOther)
 
-    def update(self, y:torch.Tensor) -> None:
-        self.y = y
+    def update(self, relIdx:int, y:torch.Tensor) -> None:
+        self.buffer[relIdx] = y
 
     def forward(self, x:torch.Tensor) -> torch.Tensor:
-        # put the early layer's data (y) before the later one (x)
-        return self.forward2(self.y, x)
+        raise NotImplementedError
 
 # %% jump layer
 
@@ -39,27 +35,48 @@ class Jump(ShortCut):
         assert relOther != -1, "It is trivial to connect to the last layer."
         super().__init__(relOther)
 
-    def forward2(self, x:torch.Tensor, y:torch.Tensor) -> torch.Tensor:
-        return x
+    def forward(self, x:torch.Tensor) -> torch.Tensor:
+        return self.buffer[self.relOther]
 
 # %% addition layer
 
 class Addition(ShortCut):
-    def __init__(self, relOther:int) -> None:
-        if relOther == -1:
-            print('Warning: Addition layer is connected to the last layer.')
+    '''
+    Add the last layer with others together.
+    The last layer (index -1) is automatically included, and need not be specified in 'relOther'.
+    '''
+    def __init__(self, relOther:Union[int, List[int]]) -> None:
         super().__init__(relOther)
+        if any(e == -1 for e in self.relOther):
+            print('Warning: Addition layer includes the last layer more than once.')
     
-    def forward2(self, x:torch.Tensor, y:torch.Tensor) -> torch.Tensor:
-        return x + y
+    def forward(self, x:torch.Tensor) -> torch.Tensor:
+        self.buffer[-1] = x
+        return torch.stack(tuple(self.buffer.values())).sum(dim=0)
 
 # %% concatenation layer
 
 class Concatenation(ShortCut):
-    def __init__(self, relOther:int, dim:int=1) -> None:
+    '''
+    Concatenate the last layer with others together.
+    The last layer (index -1) is automatically included, and need not be specified in 'relOther'.
+    @param dim: The dimension to concatenate.
+    @param order: The order of the layers to concatenate. (default: None, which means the order is ('relOther', -1))
+    '''
+    def __init__(self, relOther:Union[int, List[int]], dim:int=1, order:List[int]=None) -> None:
         super().__init__(relOther)
         self.dim = dim
+        if any(e == -1 for e in self.relOther):
+            print('Warning: Concatenation layer includes the last layer more than once.')
+        if order is None:
+            order = self.relOther + [-1]
+        else:
+            assert len(order) == len(self.relOther) + 1
+            assert all(a==b for a, b in zip(sorted(order), sorted(self.relOther + [-1])))
+        self.order = order
+        self.buffer = OrderedDict((e,None) for e in self.order)
     
-    def forward2(self, x:torch.Tensor, y:torch.Tensor) -> torch.Tensor:
-        return torch.cat((x, y), dim=self.dim)
+    def forward(self, x:torch.Tensor) -> torch.Tensor:
+        self.buffer[-1] = x
+        return torch.cat(tuple(self.buffer.values()), dim=self.dim)
 
