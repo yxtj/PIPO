@@ -103,6 +103,6 @@ def build_hand_model(weight_path=None):
 def build(model: str, weight_path=None):
     assert model in ['body', 'hand']
     if model == 'body':
-        return openpose.build_body_model(weight_path)
+        return build_body_model(weight_path)
     else:
-        return openpose.build_hand_model(weight_path)
+        return build_hand_model(weight_path)
