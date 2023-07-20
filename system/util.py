@@ -17,7 +17,7 @@ def compute_shape(model, inshape):
         for i, lyr in enumerate(model):
             if i in model.dependency:
                 for j in model.dependency[i]:
-                    model[j].update(t)
+                    model[j].update(i-j-1, t)
             t = lyr(t)
             shapes.append(tuple(t.shape))
     elif isinstance(model, nn.Sequential):
@@ -55,16 +55,13 @@ def make_client_model(socket, model, inshape, he):
             locals.append(i)
         elif isinstance(lyr, te.Jump):
             layers.append(layer.JumpClient(socket, shapes[i], shapes[i+1], he))
-            idx = i + lyr.relOther
-            scl[i] = idx
+            scl[i] = [i + r for r in lyr.relOther]
         elif isinstance(lyr, te.Addition):
             layers.append(layer.AdditionClient(socket, shapes[i], shapes[i+1], he))
-            idx = i + lyr.relOther # lyr.relOther is a negative index
-            scl[i] = idx
+            scl[i] = [i + r for r in lyr.relOther]
         elif isinstance(lyr, te.Concatenation):
             layers.append(layer.ConcatenationClient(socket, shapes[i], shapes[i+1], he))
-            idx = i + lyr.relOther
-            scl[i] = idx
+            scl[i] = [i + r for r in lyr.relOther]
         elif isinstance(lyr, nn.Identity):
             layers.append(layer.IdentityClient(socket, shapes[i], shapes[i+1], he))
             linears.append(i)
@@ -77,8 +74,8 @@ def make_client_model(socket, model, inshape, he):
     # set shortcuts inputs
     shortcuts = {} # {shortcut layer idx: input layer idx}
     for idx, oidx in scl.items():
-        oidx += 1 # move to the output of the layer
-        if isinstance(layers[oidx], layer.LocalLayerClient):
+        oidx = [i + 1 for i in oidx] # move to the output of the layer
+        if any(isinstance(layers[i], layer.LocalLayerClient) for i in oidx):
             msg = "Shortcut {} input should not be a local layer. Checking the model or adding an identity layer.".format(idx)
             raise Exception(msg)
         shortcuts[idx] = oidx
@@ -112,16 +109,13 @@ def make_server_model(socket, model, inshape):
             locals.append(i)
         elif isinstance(lyr, te.Jump):
             layers.append(layer.JumpServer(socket, shapes[i], shapes[i+1], lyr))
-            idx = i + lyr.relOther
-            scl[i] = idx
+            scl[i] = [i + r for r in lyr.relOther]
         elif isinstance(lyr, te.Addition):
             layers.append(layer.AdditionServer(socket, shapes[i], shapes[i+1], lyr))
-            idx = i + lyr.relOther # lyr.relOther is a negative index
-            scl[i] = idx
+            scl[i] = [i + r for r in lyr.relOther]
         elif isinstance(lyr, te.Concatenation):
             layers.append(layer.ConcatenationServer(socket, shapes[i], shapes[i+1], lyr))
-            idx = i + lyr.relOther
-            scl[i] = idx
+            scl[i] = [i + r for r in lyr.relOther]
         elif isinstance(lyr, nn.Identity):
             layers.append(layer.IdentityServer(socket, shapes[i], shapes[i+1], lyr))
             linears.append(i)
@@ -132,10 +126,10 @@ def make_server_model(socket, model, inshape):
         else:
             raise Exception("Unknown layer type: " + str(lyr))
     # set shortcuts inputs
-    shortcuts = {} # {shortcut layer idx: input layer idx}
+    shortcuts = {} # {shortcut layer idx: input layer idx list}
     for idx, oidx in scl.items():
-        oidx += 1 # move the layer index to the index of intermediate result
-        if isinstance(layers[oidx], layer.LocalLayerServer):
+        oidx = [i + 1 for i in oidx] # move to the output of the layer
+        if any(isinstance(layers[i], layer.LocalLayerClient) for i in oidx):
             msg = "Shortcut {} input should not be a local layer. Checking the model or adding an identity layer.".format(idx)
             raise Exception(msg)
         shortcuts[idx] = oidx
@@ -176,4 +170,3 @@ def analyze_stat(layers, n):
         elif isinstance(lyr, (layer.ShortCutServer, layer.ShortCutClient)):
             s_sc += lyr.stat
     return s_total, s_relu, s_linear, s_l_conv, s_l_fc, s_pool, s_sc
-    

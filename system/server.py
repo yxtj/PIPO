@@ -16,10 +16,11 @@ class Server():
             len(self.layers), len(self.linears), len(self.locals), len(self.shortcuts)))
         # for shortcut layer
         self.dependency = {}
-        for k, v in self.shortcuts.items():
-            if v not in self.dependency:
-                self.dependency[v] = []
-            self.dependency[v].append(k)
+        for k, vs in self.shortcuts.items():
+            for v in vs:
+                if v not in self.dependency:
+                    self.dependency[v] = []
+                self.dependency[v].append(k)
         # self.to_buffer = [v for k,v in self.shortcuts.items()]
     
     def offline(self):
@@ -37,12 +38,12 @@ class Server():
             data = lyr.offline() # get the input of this layer (i-th intermediate result)
             if i in self.dependency:
                 for j in self.dependency[i]:
-                    self.layers[j].update_offline(data)
+                    self.layers[j].update_offline(i-j-1, data)
             
     def online(self):
         for i, lyr in enumerate(self.layers):
             data = lyr.online() # get the input of this layer (i-th intermediate result)
             if i in self.dependency:
                 for j in self.dependency[i]:
-                    self.layers[j].update_online(data)
+                    self.layers[j].update_online(i-j-1, data)
         

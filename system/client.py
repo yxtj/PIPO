@@ -18,7 +18,7 @@ class Client():
         print("Model loaded {} layers: {} linear layers, {} local layers, {} shortcut layers.".format(
             len(self.layers), len(self.linears), len(self.locals), len(self.shortcuts)))
         # for shortcut layer
-        self.to_buffer = [v for k,v in self.shortcuts.items()]
+        # self.to_buffer = [v for k,v in self.shortcuts.items()]
         
     def offline(self):
         for i, lyr in enumerate(self.layers):
