@@ -32,11 +32,14 @@ class Jump(ShortCut):
     Copy the output of an early layer. (Make a flywire connection)
     '''
     def __init__(self, relOther:int) -> None:
-        assert relOther != -1, "It is trivial to connect to the last layer."
+        assert isinstance(relOther, int) and relOther != -1, "It is trivial to connect to the last layer."
         super().__init__(relOther)
 
     def forward(self, x:torch.Tensor) -> torch.Tensor:
-        return self.buffer[self.relOther]
+        return self.buffer[self.relOther[0]]
+
+    def __repr__(self) -> str:
+        return f'Jump({self.relOther})'
 
 # %% addition layer
 
@@ -53,6 +56,9 @@ class Addition(ShortCut):
     def forward(self, x:torch.Tensor) -> torch.Tensor:
         self.buffer[-1] = x
         return torch.stack(tuple(self.buffer.values())).sum(dim=0)
+
+    def __repr__(self) -> str:
+        return f'Addition({self.relOther})'
 
 # %% concatenation layer
 
@@ -80,3 +86,5 @@ class Concatenation(ShortCut):
         self.buffer[-1] = x
         return torch.cat(tuple(self.buffer.values()), dim=self.dim)
 
+    def __repr__(self) -> str:
+        return f'Concatenation({self.relOther}, dim={self.dim}, order={self.order})'
