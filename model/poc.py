@@ -190,7 +190,7 @@ Poc6Model = te.SequentialShortcut(
     te.Jump(-3), # jump
     nn.Conv2d(5, 6, 3, 1, 1), # conv2
     nn.ReLU(),
-    te.Concatenation(-4), # concat
+    te.Concatenation(-4, 1, [-4, -1]), # concat
     nn.Conv2d(10, 10, 3, 1, 1),
     nn.ReLU(),
     nn.Flatten(),
