@@ -11,14 +11,16 @@ import system
 if __name__ == '__main__':
     argv = sys.argv
     if len(argv) < 3:
-        print('Usage: python server|client model [seed=0] [host=localhost] [port=8100]')
+        print('Usage: python server|client model [device=cpu] [seed=0] [host=localhost] [port=8100]')
         sys.exit(1)
     mode = argv[1]
     assert mode in ['server', 'client']
     model_name = argv[2]
-    seed = int(argv[3]) if len(argv) > 3 else 0
-    host = argv[4] if len(argv) > 4 else 'localhost'
-    port = int(argv[5]) if len(argv) > 5 else 8100
+    device = argv[3] if len(argv) > 3 else 'cpu'
+    seed = int(argv[4]) if len(argv) > 4 else 0
+    assert device == 'cpu' or device.startswith('cuda')
+    host = argv[5] if len(argv) > 5 else 'localhost'
+    port = int(argv[6]) if len(argv) > 6 else 8100
     
     # set seed to make sure the model is the same on client and server
     if seed is not None:
@@ -38,6 +40,9 @@ if __name__ == '__main__':
         print("Available models: {}".format(poc.map.keys()))
         sys.exit(1)
     
+    if device == 'cuda':
+        model = model.cuda()
+
     if mode == 'server':
         s = socket.create_server((host, port))
         print("Server is running on {}:{}".format(host, port))
@@ -70,6 +75,8 @@ if __name__ == '__main__':
         print("Client offline finished")
         inshape = (1, *inshape)
         data = torch.rand(inshape)
+        if device == 'cuda':
+            data = data.cuda()
         # data = torch.arange(1, 1 + torch.prod(torch.tensor(inshape)).item(), dtype=torch.float).view(inshape)
         with torch.no_grad():
             res = client.online(data)

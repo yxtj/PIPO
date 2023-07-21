@@ -11,8 +11,8 @@ from Pyfhel import Pyfhel
 
 class MaxPoolClient(LayerClient):
     def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel,
-                 layer:torch.nn.MaxPool2d) -> None:
-        super().__init__(socket, ishape, oshape, he)
+                 layer:torch.nn.MaxPool2d, device: str) -> None:
+        super().__init__(socket, ishape, oshape, he, device)
         self.layer = layer
         
     def online(self, xm) -> torch.Tensor:
@@ -25,7 +25,7 @@ class MaxPoolClient(LayerClient):
 
 
 class MaxPoolServer(LayerServer):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str) -> None:
         assert isinstance(layer, torch.nn.MaxPool2d)
         # kernel_size must be no greater than stride
         if isinstance(layer.kernel_size, int):
@@ -44,7 +44,7 @@ class MaxPoolServer(LayerServer):
             stride_shape = layer.stride
         assert ishape[-2]//stride_shape[0] == oshape[-2] and ishape[-1]//stride_shape[1] == oshape[-1]
         
-        super().__init__(socket, ishape, oshape, layer)
+        super().__init__(socket, ishape, oshape, layer, device)
         self.stride_shape = stride_shape
         # make a protocol for pooling (its output shape is the same as the input shape)
         self.protocol_pool = ProtocolServer(self.socket, self.stat, self.he)

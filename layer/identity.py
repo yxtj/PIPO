@@ -2,21 +2,22 @@ from .base import LayerClient, LayerServer
 
 from socket import socket
 from typing import Union
+import numpy as np
 import time
 import torch
 from Pyfhel import Pyfhel
 
 class IdentityClient(LayerClient):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel) -> None:
-        super().__init__(socket, ishape, oshape, he)
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel, device: str) -> None:
+        super().__init__(socket, ishape, oshape, he, device)
     
 
 class IdentityServer(LayerServer):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str) -> None:
         assert isinstance(layer, torch.nn.Identity)
-        super().__init__(socket, ishape, oshape, layer)
+        super().__init__(socket, ishape, oshape, layer, device)
     
-    def offline(self) -> torch.Tensor:
+    def offline(self) -> np.ndarray:
         t = time.time()
         rm = self.protocol.recv_offline()
         self.protocol.send_offline(rm)

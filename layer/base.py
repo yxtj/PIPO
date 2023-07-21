@@ -8,15 +8,17 @@ from Pyfhel import Pyfhel
 from layer_basic import LayerCommon
 from protocol import ProtocolClient, ProtocolServer
 
+from setting import USE_HE
+
 __all__ = ['LayerClient', 'LayerServer', 'LocalLayerClient', 'LocalLayerServer']
 
 
 class LayerClient(LayerCommon):
-    def __init__(self, socket:socket, ishape:tuple, oshape:tuple, he:Pyfhel) -> None:
-        super().__init__(socket, ishape, oshape, he)
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he: Pyfhel, device: str) -> None:
+        super().__init__(socket, ishape, oshape, he, device)
         # self.is_input_layer = False
         # self.is_output_layer = False
-        self.protocol = ProtocolClient(socket, self.stat, he)
+        self.protocol = ProtocolClient(socket, self.stat, he, device)
     
     def setup(self, **kwargs):
         t = time.time()
@@ -44,10 +46,11 @@ class LayerClient(LayerCommon):
     
     
 class LayerServer(LayerCommon):
-    def __init__(self, socket:socket, ishape:tuple, oshape:tuple, layer:torch.nn.Module) -> None:
-        super().__init__(socket, ishape, oshape, Pyfhel())
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str) -> None:
+        he = Pyfhel() if USE_HE else None
+        super().__init__(socket, ishape, oshape, he, device)
         self.layer = layer
-        self.protocol = ProtocolServer(socket, self.stat, self.he)
+        self.protocol = ProtocolServer(socket, self.stat, self.he, device)
     
     def setup(self, last_lyr: LayerCommon, m: Union[torch.Tensor, float, int]=None, **kwargs) -> None:
         t = time.time()
@@ -79,8 +82,8 @@ class LayerServer(LayerCommon):
 # %% local layer specialization
 
 class LocalLayerClient(LayerClient):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel) -> None:
-        super().__init__(socket, ishape, oshape, he)
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel, device: str) -> None:
+        super().__init__(socket, ishape, oshape, he, device)
     
     def offline(self) -> None:
         return
@@ -89,8 +92,8 @@ class LocalLayerClient(LayerClient):
         raise NotImplementedError
 
 class LocalLayerServer(LayerServer):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module) -> None:
-        super().__init__(socket, ishape, oshape, layer)
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str) -> None:
+        super().__init__(socket, ishape, oshape, layer, device)
     
     def setup(self, last_lyr: LayerCommon, m: Union[torch.Tensor, float, int]=None, **kwargs) -> None:
         # forward the last layer's m

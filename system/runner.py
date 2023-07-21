@@ -71,6 +71,8 @@ def run_client(host: str, port: int, model: torch.nn.Module, inshape: tuple, he:
         inshape = (1, *inshape)
     for i in range(n):
         d = torch.rand(inshape) if dataset is None else dataset[i]
+        if next(model.parameters()).is_cuda:
+            d = d.cuda()
         with torch.no_grad():
             res = client.online(d)
         if verify:

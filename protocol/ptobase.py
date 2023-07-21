@@ -17,10 +17,11 @@ NumberType = Union[int, float, torch.Tensor, np.ndarray]
 # The send/recv methods should be state-free functions.
 
 class ProtocolBase():
-    def __init__(self, s: socket.socket, stat: Stat, he: Pyfhel):
+    def __init__(self, s: socket.socket, stat: Stat, he: Pyfhel, device: str):
         self.socket = s
         self.stat = stat
         self.he = he
+        self.device = device
         self.ishape = None
         self.oshape = None
         
@@ -55,9 +56,11 @@ class ProtocolBase():
                 res = torch.from_numpy(v)
             elif isinstance(v, (int, float)):
                 # res = v
-                res = torch.zeros(shape).fill_(v)
+                res = torch.zeros(shape, device=self.device).fill_(v)
+            if self.device != 'cpu':
+                res = res.to(self.device)
         else:
-            res = gen_add_share(shape)
+            res = gen_add_share(shape, device=self.device)
         return res
     
     def _gen_mul_share_(self, v: NumberType, shape: tuple) -> torch.Tensor:
@@ -72,20 +75,22 @@ class ProtocolBase():
             elif isinstance(v, (int, float)):
                 # res = v
                 if v == 0:
-                    res = torch.zeros(shape)
+                    res = torch.zeros(shape, device=self.device)
                 elif v == 1:
-                    res = torch.ones(shape)
+                    res = torch.ones(shape, device=self.device)
                 else:
-                    res= torch.zeros(shape).fill_(v)
+                    res= torch.zeros(shape, device=self.device).fill_(v)
+            if self.device != 'cpu':
+                res = res.to(self.device)
         else:
-            res = gen_mul_share(shape)
+            res = gen_mul_share(shape, device=self.device)
         return res
 
 
 # Client workflow: send -> recv
 class ProBaseClient(ProtocolBase):
-    def __init__(self, s: socket.socket, stat: Stat, he: Pyfhel):
-        super().__init__(s, stat, he)
+    def __init__(self, s: socket.socket, stat: Stat, he: Pyfhel, device: str='cpu'):
+        super().__init__(s, stat, he, device)
         self.r = None
         self.pre = None
     
@@ -125,8 +130,8 @@ class ProBaseClient(ProtocolBase):
 
 # Server workflow: recv -> process -> send
 class ProBaseServer(ProtocolBase):
-    def __init__(self, s: socket.socket, stat: Stat, he: Pyfhel):
-        super().__init__(s, stat, he)
+    def __init__(self, s: socket.socket, stat: Stat, he: Pyfhel, device: str='cpu'):
+        super().__init__(s, stat, he, device)
         self.mlast = None
         self.s = None
         self.m = None

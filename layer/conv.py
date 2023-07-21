@@ -7,29 +7,31 @@ import time
 import torch
 from Pyfhel import Pyfhel
 
-class ConvClient(LayerClient):
-    def __init__(self, socket:socket, ishape:tuple, oshape:tuple, he:Pyfhel) -> None:
-        super().__init__(socket, ishape, oshape, he)
 
-    
+class ConvClient(LayerClient):
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he: Pyfhel, device: str) -> None:
+        super().__init__(socket, ishape, oshape, he, device)
+
+
 class ConvServer(LayerServer):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str) -> None:
         assert isinstance(layer, torch.nn.Conv2d)
-        super().__init__(socket, ishape, oshape, layer)
-    
+        super().__init__(socket, ishape, oshape, layer, device)
+
     def offline(self) -> np.ndarray:
         t = time.time()
-        rm = self.protocol.recv_offline() # recv: r'_i = r_i / m_{i-1}
-        data = self.run_layer_offline(rm) # W_i * r'_i
-        self.protocol.send_offline(data) # send: (W_i * r'_i) .* m_i - s_i
+        rm = self.protocol.recv_offline()  # recv: r'_i = r_i / m_{i-1}
+        data = self.run_layer_offline(rm)  # W_i * r'_i
+        self.protocol.send_offline(data)  # send: (W_i * r'_i) .* m_i - s_i
         self.stat.time_offline += time.time() - t
         return rm
-    
+
     def online(self) -> torch.Tensor:
         t = time.time()
-        xmr_i = self.protocol.recv_online() # recv: xmr_i = x_i - r_i / m_{i-1}
-        data = self.layer(xmr_i) # W_i * (x_i - r_i / m_{i-1})
-        self.protocol.send_online(data) # send: (W_i * (x_i - r_i / m_{i-1})) .* m_i + s_i
+        # recv: xmr_i = x_i - r_i / m_{i-1}
+        xmr_i = self.protocol.recv_online()
+        data = self.layer(xmr_i)  # W_i * (x_i - r_i / m_{i-1})
+        # send: (W_i * (x_i - r_i / m_{i-1})) .* m_i + s_i
+        self.protocol.send_online(data)
         self.stat.time_online += time.time() - t
         return xmr_i
-

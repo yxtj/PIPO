@@ -9,7 +9,7 @@ from setting import USE_HE
 if __name__ == '__main__':
     argv = sys.argv
     if len(argv) < 2:
-        print('Usage: python server|client [n=1] [type=body] [weight_file] [host=localhost] [port=8100]')
+        print('Usage: python server|client [n=1] [type=body] [weight_file] [device=cpu] [host=localhost] [port=8100]')
         sys.exit(1)
     # model_name = argv[1]
     mode = argv[1]
@@ -18,14 +18,17 @@ if __name__ == '__main__':
     type = argv[3] if len(argv) > 3 else 'body'
     assert type in ['body', 'hand']
     wfile = argv[4] if len(argv) > 4 else None
-    host = argv[5] if len(argv) > 5 else 'localhost'
-    port = int(argv[6]) if len(argv) > 6 else 8100
+    device = argv[5] if len(argv) > 5 else 'cpu'
+    assert device == 'cpu' or device.startswith('cuda')
+    host = argv[6] if len(argv) > 6 else 'localhost'
+    port = int(argv[7]) if len(argv) > 7 else 8100
     
     # set model and inshape
     inshape = openpose.inshape
     model = openpose.build(type, wfile)
-    if torch.cuda.is_available():
-        model = model.cuda()
+    print("Model loaded: {} model on {}".format(type, device))
+    if device.startswith('cuda') and torch.cuda.is_available():
+        model = model.to(device)
     model.eval()
     
     if mode == 'server':

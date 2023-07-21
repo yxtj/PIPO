@@ -8,10 +8,11 @@ from .stat import Stat
 
 
 class LayerCommon():
-    def __init__(self, socket:socket, ishape:tuple, oshape:tuple, he:Pyfhel) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he: Pyfhel, device: str) -> None:
         self.socket = socket
         self.ishape = ishape
         self.oshape = oshape
         self.he = he
+        self.device = device
         self.stat = Stat()
     

@@ -10,13 +10,13 @@ from Pyfhel import Pyfhel
 class AvgPoolClient(LayerClient):
     def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel,
                  layer:torch.nn.AvgPool2d) -> None:
-        super().__init__(socket, ishape, oshape, he)
+        super().__init__(socket, ishape, oshape, he, device)
         
 
 class AvgPoolServer(LayerServer):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str) -> None:
         assert isinstance(layer, torch.nn.AvgPool2d)
-        super().__init__(socket, ishape, oshape, layer)
+        super().__init__(socket, ishape, oshape, layer, device)
     
     def offline(self) -> np.ndarray:
         t = time.time()

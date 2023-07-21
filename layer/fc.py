@@ -8,13 +8,13 @@ import torch
 from Pyfhel import Pyfhel
 
 class FcClient(LayerClient):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel) -> None:
-        super().__init__(socket, ishape, oshape, he)
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel, device: str) -> None:
+        super().__init__(socket, ishape, oshape, he, device)
 
 class FcServer(LayerServer):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str) -> None:
         assert isinstance(layer, torch.nn.Linear)
-        super().__init__(socket, ishape, oshape, layer)
+        super().__init__(socket, ishape, oshape, layer, device)
     
     def offline(self) -> np.ndarray:
         t = time.time()

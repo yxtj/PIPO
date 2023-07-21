@@ -8,8 +8,8 @@ import torch
 from Pyfhel import Pyfhel
 
 class FlattenClient(LocalLayerClient):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel) -> None:
-        super().__init__(socket, ishape, oshape, he)
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel, device: str) -> None:
+        super().__init__(socket, ishape, oshape, he, device)
         self.layer = torch.nn.Flatten()
     
     def online(self, xm) -> torch.Tensor:
@@ -20,9 +20,9 @@ class FlattenClient(LocalLayerClient):
 
 
 class FlattenServer(LocalLayerServer):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str) -> None:
         assert isinstance(layer, torch.nn.Flatten)
-        super().__init__(socket, ishape, oshape, layer)
+        super().__init__(socket, ishape, oshape, layer, device)
         
     def setup(self, last_lyr: LocalLayerServer, m: Union[torch.Tensor, float, int]=None, **kwargs) -> None:
         # flatten the last m and forward to the next layer

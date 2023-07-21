@@ -11,14 +11,14 @@ from Pyfhel import Pyfhel
 # abstract shortcut layer
 
 class ShortCutClient(LayerClient):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel) -> None:
-        super().__init__(socket, ishape, oshape, he)
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel, device: str) -> None:
+        super().__init__(socket, ishape, oshape, he, device)
 
 
 class ShortCutServer(LayerServer):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str) -> None:
         assert isinstance(layer, ShortCut)
-        super().__init__(socket, ishape, oshape, layer)
+        super().__init__(socket, ishape, oshape, layer, device)
         self.other_offset = layer.relOther
         self.buff = {} # used and cleaned by offline only
 
@@ -39,14 +39,14 @@ class ShortCutServer(LayerServer):
 # jump layer 
 
 class JumpClient(ShortCutClient):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel) -> None:
-        super().__init__(socket, ishape, oshape, he)
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel, device: str) -> None:
+        super().__init__(socket, ishape, oshape, he, device)
 
 
 class JumpServer(ShortCutServer):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str) -> None:
         assert isinstance(layer, Jump)
-        super().__init__(socket, ishape, oshape, layer)
+        super().__init__(socket, ishape, oshape, layer, device)
 
     def offline(self) -> np.ndarray:
         t = time.time()
@@ -60,16 +60,16 @@ class JumpServer(ShortCutServer):
 # addition layer
 
 class AdditionClient(ShortCutClient):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel, device: str) -> None:
         assert ishape == oshape
-        super().__init__(socket, ishape, oshape, he)
+        super().__init__(socket, ishape, oshape, he, device)
 
 
 class AdditionServer(ShortCutServer):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str) -> None:
         assert isinstance(layer, Addition)
         assert ishape == oshape
-        super().__init__(socket, ishape, oshape, layer)
+        super().__init__(socket, ishape, oshape, layer, device)
 
     def offline(self) -> np.ndarray:
         t = time.time()
@@ -88,14 +88,14 @@ class AdditionServer(ShortCutServer):
 # concatenation layer
 
 class ConcatenationClient(ShortCutClient):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel) -> None:
-        super().__init__(socket, ishape, oshape, he)
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel, device: str) -> None:
+        super().__init__(socket, ishape, oshape, he, device)
 
 
 class ConcatenationServer(ShortCutServer):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str) -> None:
         assert isinstance(layer, Concatenation)
-        super().__init__(socket, ishape, oshape, layer)
+        super().__init__(socket, ishape, oshape, layer, device)
         self.dim = layer.dim
         self.other_offset = layer.relOther
         self.buff = {e:None for e in layer.order} # used and cleaned by offline only

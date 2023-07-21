@@ -8,8 +8,8 @@ import torch
 from Pyfhel import Pyfhel
 
 class ReLUClient(LocalLayerClient):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel) -> None:
-        super().__init__(socket, ishape, oshape, he)
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel, device: str) -> None:
+        super().__init__(socket, ishape, oshape, he, device)
         self.layer = torch.nn.ReLU()
     
     def online(self, xm) -> torch.Tensor:
@@ -19,7 +19,7 @@ class ReLUClient(LocalLayerClient):
         return data
     
 class ReLUServer(LocalLayerServer):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str) -> None:
         assert isinstance(layer, torch.nn.ReLU)
-        super().__init__(socket, ishape, oshape, layer)
+        super().__init__(socket, ishape, oshape, layer, device)
         
