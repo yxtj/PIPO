@@ -55,7 +55,7 @@ class MaxPoolServer(LayerServer):
         last_pto = last_lyr.protocol if last_lyr is not None else None
         pto = self.protocol
         # set mp and sp
-        block = torch.ones(self.stride_shape)
+        block = torch.ones(self.stride_shape, device=self.device)
         mp = torch.kron(pto.m, block) # kronecker product
         sp = torch.rand_like(mp)
         self.protocol_pool.setup(self.ishape, mp.shape, s=sp, m=mp, last=last_pto)
