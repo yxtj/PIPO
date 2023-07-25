@@ -23,17 +23,27 @@ class ShortCutServer(LayerServer):
         self.buff = {} # used and cleaned by offline only
 
     def update_offline(self, ridx:int, buff: Union[np.ndarray, torch.Tensor]) -> None:
+        t0 = time.time()
         self.buff[ridx] = buff
+        self.stat.time_offline_comp += time.time() - t0
 
     def update_online(self, ridx:int, buff: torch.Tensor) -> None:
+        t0 = time.time()
         self.layer.update(ridx, buff)
+        self.stat.time_online_comp += time.time() - t0
 
     def online(self) -> torch.Tensor:
-        t = time.time()
+        t0 = time.time()
         xrm_i = self.protocol.recv_online()
+        t1 = time.time()
         data = self.layer(xrm_i)
+        t2 = time.time()
         self.protocol.send_online(data)
-        self.stat.time_online += time.time() - t
+        t3 = time.time()
+        self.stat.time_online_recv += t1 - t0
+        self.stat.time_online_comp += t2 - t1
+        self.stat.time_online_send += t3 - t2
+        self.stat.time_online += t3 - t0
         return xrm_i
 
 # jump layer 
@@ -49,12 +59,16 @@ class JumpServer(ShortCutServer):
         super().__init__(socket, ishape, oshape, layer, device)
 
     def offline(self) -> np.ndarray:
-        t = time.time()
+        t0 = time.time()
         rm_i = self.protocol.recv_offline()
+        t1 = time.time()
         data = self.buff[self.other_offset[0]]
         self.protocol.send_offline(data)
         self.buff = None
-        self.stat.time_offline += time.time() - t
+        t2 = time.time()
+        self.stat.time_offline_recv += t1 - t0
+        self.stat.time_offline_send += t2 - t1
+        self.stat.time_offline += t2 - t0
         return rm_i
 
 # addition layer
@@ -72,17 +86,23 @@ class AdditionServer(ShortCutServer):
         super().__init__(socket, ishape, oshape, layer, device)
 
     def offline(self) -> np.ndarray:
-        t = time.time()
+        t0 = time.time()
         rm_i = self.protocol.recv_offline() # r_i/m_{i-1}
+        t1 = time.time()
         # data = self.buff + rm_i # r_i / m_{i-1} + r_j / m_{j-1}
         self.buff[-1] = rm_i
         if isinstance(rm_i, torch.Tensor):
             data = torch.stack(tuple(self.buff.values())).sum(dim=0)
         else: # numpy
             data = np.stack(tuple(self.buff.values())).sum(axis=0)
+        t2 = time.time()
         self.protocol.send_offline(data)
         self.buff = None
-        self.stat.time_offline += time.time() - t
+        t3 = time.time()
+        self.stat.time_offline_recv += t1 - t0
+        self.stat.time_offline_comp += t2 - t1
+        self.stat.time_offline_send += t3 - t2
+        self.stat.time_offline += t3 - t0
         return rm_i
     
 # concatenation layer
@@ -101,15 +121,21 @@ class ConcatenationServer(ShortCutServer):
         self.buff = {e:None for e in layer.order} # used and cleaned by offline only
     
     def offline(self) -> np.ndarray:
-        t = time.time()
+        t0 = time.time()
         rm_i = self.protocol.recv_offline()
+        t1 = time.time()
         self.buff[-1] = rm_i
         if isinstance(rm_i, torch.Tensor):
             data = torch.cat(tuple(self.buff.values()), dim=self.dim)
         else: # numpy
             data = np.concatenate((tuple(self.buff.values())), axis=self.dim)
+        t2 = time.time()
         self.protocol.send_offline(data)
         self.buff = None
-        self.stat.time_offline += time.time() - t
+        t3 = time.time()
+        self.stat.time_offline_recv += t1 - t0
+        self.stat.time_offline_comp += t2 - t1
+        self.stat.time_offline_send += t3 - t2
+        self.stat.time_offline += t3 - t0
         return rm_i
     

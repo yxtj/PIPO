@@ -16,11 +16,17 @@ class MaxPoolClient(LayerClient):
         self.layer = layer
         
     def online(self, xm) -> torch.Tensor:
-        t = time.time()
+        t0 = time.time()
         self.protocol.send_online(xm) # send: x_i .* m_{i-1} - r_i
+        t1 = time.time()
         data = self.protocol.recv_online() # x .* mp
+        t2 = time.time()
         data = self.layer(data) # max_pool(x) .* m
-        self.stat.time_online += time.time() - t
+        t3 = time.time()
+        self.stat.time_online_send += t1 - t0
+        self.stat.time_online_recv += t2 - t1
+        self.stat.time_online_comp += t3 - t2
+        self.stat.time_online += t3 - t0
         return data
 
 
@@ -71,18 +77,30 @@ class MaxPoolServer(LayerServer):
             return x[..., :h, :w]
     
     def offline(self) -> np.ndarray:
-        t = time.time()
+        t0 = time.time()
         rm = self.protocol_pool.recv_offline() # rm = r_i / m_{i-1}
+        t1 = time.time()
         data = self.cut_input(rm)
+        t2 = time.time()
         self.protocol_pool.send_offline(data) # r_i / m_{i-1} .* m^p_{i} - s_i
-        self.stat.time_offline += time.time() - t
+        t3 = time.time()
+        self.stat.time_offline_recv += t1 - t0
+        self.stat.time_offline_comp += t2 - t1
+        self.stat.time_offline_send += t3 - t2
+        self.stat.time_offline += t3 - t0
         return rm
     
     def online(self) -> torch.Tensor:
-        t = time.time()
+        t0 = time.time()
         xrm = self.protocol_pool.recv_online() # xrm = (x_i - r_i / m_{i-1})
+        t1 = time.time()
         data = self.cut_input(xrm) 
+        t2 = time.time()
         self.protocol_pool.send_online(data) # (x_i - r_i / m_{i-1}) .* m^p_{i} + s_i
-        self.stat.time_online += time.time() - t
+        t3 = time.time()
+        self.stat.time_online_recv += t1 - t0
+        self.stat.time_online_comp += t2 - t1
+        self.stat.time_online_send += t3 - t2
+        self.stat.time_online += t3 - t0
         return xrm
     

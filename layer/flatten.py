@@ -13,9 +13,11 @@ class FlattenClient(LocalLayerClient):
         self.layer = torch.nn.Flatten()
     
     def online(self, xm) -> torch.Tensor:
-        t = time.time()
+        t0 = time.time()
         data = self.layer(xm)
-        self.stat.time_online += time.time() - t
+        t1 = time.time()
+        self.stat.time_online_comp += t1 - t0
+        self.stat.time_online += t1 - t0
         return data
 
 
