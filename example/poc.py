@@ -40,8 +40,9 @@ if __name__ == '__main__':
         print("Available models: {}".format(poc.map.keys()))
         sys.exit(1)
     
-    if device == 'cuda':
-        model = model.cuda()
+    if device.startswith('cuda') and torch.cuda.is_available():
+        model = model.to(device)
+    print("Model loaded: {} model on {}".format(model_name, device))
 
     if mode == 'server':
         s = socket.create_server((host, port))
@@ -75,8 +76,8 @@ if __name__ == '__main__':
         print("Client offline finished")
         inshape = (1, *inshape)
         data = torch.rand(inshape)
-        if device == 'cuda':
-            data = data.cuda()
+        if device.startswith('cuda') and torch.cuda.is_available():
+            data = data.to(device)
         # data = torch.arange(1, 1 + torch.prod(torch.tensor(inshape)).item(), dtype=torch.float).view(inshape)
         with torch.no_grad():
             res = client.online(data)
