@@ -40,8 +40,8 @@ class ProtocolClient(ProBaseClient):
         data = data + self.pre
         t2 = time.time()
         self.stat.byte_online_recv += nbyte
-        self.stat.time_online_comp += t1 - t0
-        self.stat.time_online_recv += t2 - t1
+        self.stat.time_online_recv += t1 - t0
+        self.stat.time_online_comp += t2 - t1
         return data
 
 
@@ -77,8 +77,8 @@ class ProtocolServer(ProBaseServer):
         data = data/self.mlast
         t2 = time.time()
         self.stat.byte_online_recv += nbyte
-        self.stat.time_online_comp += t1 - t0
-        self.stat.time_online_recv += t2 - t1
+        self.stat.time_online_recv += t1 - t0
+        self.stat.time_online_comp += t2 - t1
         return data
     
     def send_online(self, data: torch.Tensor) -> None:
