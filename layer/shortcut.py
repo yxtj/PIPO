@@ -40,9 +40,7 @@ class ShortCutServer(LayerServer):
         t2 = time.time()
         self.protocol.send_online(data)
         t3 = time.time()
-        self.stat.time_online_recv += t1 - t0
         self.stat.time_online_comp += t2 - t1
-        self.stat.time_online_send += t3 - t2
         self.stat.time_online += t3 - t0
         return xrm_i
 
@@ -61,13 +59,11 @@ class JumpServer(ShortCutServer):
     def offline(self) -> np.ndarray:
         t0 = time.time()
         rm_i = self.protocol.recv_offline()
-        t1 = time.time()
+        # t1 = time.time()
         data = self.buff[self.other_offset[0]]
         self.protocol.send_offline(data)
         self.buff = None
         t2 = time.time()
-        self.stat.time_offline_recv += t1 - t0
-        self.stat.time_offline_send += t2 - t1
         self.stat.time_offline += t2 - t0
         return rm_i
 
@@ -99,9 +95,7 @@ class AdditionServer(ShortCutServer):
         self.protocol.send_offline(data)
         self.buff = None
         t3 = time.time()
-        self.stat.time_offline_recv += t1 - t0
         self.stat.time_offline_comp += t2 - t1
-        self.stat.time_offline_send += t3 - t2
         self.stat.time_offline += t3 - t0
         return rm_i
     
@@ -133,9 +127,7 @@ class ConcatenationServer(ShortCutServer):
         self.protocol.send_offline(data)
         self.buff = None
         t3 = time.time()
-        self.stat.time_offline_recv += t1 - t0
         self.stat.time_offline_comp += t2 - t1
-        self.stat.time_offline_send += t3 - t2
         self.stat.time_offline += t3 - t0
         return rm_i
     

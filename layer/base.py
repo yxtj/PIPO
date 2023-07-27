@@ -29,26 +29,20 @@ class LayerClient(LayerCommon):
         t0 = time.time()
         # print("r", self.protocol.r)
         self.protocol.send_offline()
-        t1 = time.time()
         # wait for the server to finish processing
         self.protocol.recv_offline()
         t2 = time.time()
         # print("pre", self.protocol.pre)
-        self.stat.time_offline_send += t1 - t0
-        self.stat.time_offline_recv += t2 - t1
         self.stat.time_offline += t2 - t0
     
     def online(self, xm) -> torch.Tensor:
         t0 = time.time()
         # print("xm", xm)
         self.protocol.send_online(xm)
-        t1 = time.time()
         # wait for the server to finish processing
         data = self.protocol.recv_online()
         t2 = time.time()
         # print("wxm", data)
-        self.stat.time_online_send += t1 - t0
-        self.stat.time_online_recv += t2 - t1
         self.stat.time_online += t2 - t0
         return data
     

@@ -20,11 +20,9 @@ class IdentityServer(LayerServer):
     def offline(self) -> np.ndarray:
         t0 = time.time()
         rm = self.protocol.recv_offline()
-        t1 = time.time()
+        # t1 = time.time()
         self.protocol.send_offline(rm)
         t2 = time.time()
-        self.stat.time_offline_recv += t1 - t0
-        self.stat.time_offline_send += t2 - t1
         self.stat.time_offline += t2 - t0
         return rm
     
@@ -34,7 +32,7 @@ class IdentityServer(LayerServer):
         t1 = time.time()
         self.protocol.send_online(xrm)
         t2 = time.time()
-        self.stat.time_online_recv += t1 - t0
-        self.stat.time_online_send += t2 - t1
+        # self.stat.time_online_recv += t1 - t0
+        # self.stat.time_online_send += t2 - t1
         self.stat.time_online += t2 - t0
         return xrm

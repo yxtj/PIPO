@@ -26,9 +26,7 @@ class AvgPoolServer(LayerServer):
         t2 = time.time()
         self.protocol.send_offline(data)
         t3 = time.time()
-        self.stat.time_offline_recv += t1 - t0
         self.stat.time_offline_comp += t2 - t1
-        self.stat.time_offline_send += t3 - t2
         self.stat.time_offline += t3 - t0
         return rm
     
@@ -40,8 +38,6 @@ class AvgPoolServer(LayerServer):
         t2 = time.time()
         self.protocol.send_online(data)
         t3 = time.time()
-        self.stat.time_online_recv += t1 - t0
         self.stat.time_online_comp += t2 - t1
-        self.stat.time_online_send += t3 - t2
         self.stat.time_online += t3 - t0
         return xmr_i

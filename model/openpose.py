@@ -8,6 +8,7 @@ from . import op_impl
 # __ALL__ = [inshape, build, padRightDownCorner]
 
 inshape = (3, 368, 368)
+# inshape = (3, 36, 36)
 
 # transfer caffe model to pytorch which will match the layer name
 def load_model(model, model_weights):
