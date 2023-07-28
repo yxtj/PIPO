@@ -57,8 +57,7 @@ class ProtocolBase():
             elif isinstance(v, (int, float)):
                 # res = v
                 res = torch.zeros(shape, device=self.device).fill_(v)
-            if self.device != 'cpu':
-                res = res.to(self.device)
+            res = res.to(self.device)
         else:
             res = gen_add_share(shape, device=self.device)
         return res
@@ -80,8 +79,7 @@ class ProtocolBase():
                     res = torch.ones(shape, device=self.device)
                 else:
                     res= torch.zeros(shape, device=self.device).fill_(v)
-            if self.device != 'cpu':
-                res = res.to(self.device)
+            res = res.to(self.device)
         else:
             res = gen_mul_share(shape, device=self.device)
         return res
@@ -124,6 +122,7 @@ class ProBaseClient(ProtocolBase):
             data = heutil.decrypt(self.he, data)
         else:
             data, nbyte = comm.recv_torch(self.socket)
+            data = data.to(self.device)
         self.stat.byte_offline_recv += nbyte
         return data
 
@@ -173,6 +172,7 @@ class ProBaseServer(ProtocolBase):
             data, nbyte = comm.recv_he_matrix(self.socket, self.he)
         else:
             data, nbyte = comm.recv_torch(self.socket)
+            data = data.to(self.device)
         self.stat.byte_offline_recv += nbyte
         return data
     

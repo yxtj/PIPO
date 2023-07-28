@@ -36,6 +36,7 @@ class ProtocolClient(ProBaseClient):
     def recv_online(self) -> torch.Tensor:
         t0 = time.time()
         data, nbyte = comm.recv_torch(self.socket)
+        data = data.to(self.device)
         t1 = time.time()
         data = data + self.pre
         t2 = time.time()
@@ -50,7 +51,8 @@ class ProtocolServer(ProBaseServer):
         t0 = time.time()
         data = self.basic_recv_offline()
         t1 = time.time()
-        if not (isinstance(self.mlast, (int, float)) and self.mlast != 1):
+        if not (isinstance(self.mlast, (int, float)) and self.mlast == 1):
+            print(data.device, self.mlast.device)
             data /= self.mlast
             t2 = time.time()
             self.stat.time_offline_comp += t2 - t1
@@ -73,6 +75,7 @@ class ProtocolServer(ProBaseServer):
         '''
         t0 = time.time()
         data, nbyte = comm.recv_torch(self.socket)
+        data = data.to(self.device)
         t1 = time.time()
         data = data/self.mlast
         t2 = time.time()

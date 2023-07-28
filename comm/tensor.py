@@ -7,7 +7,7 @@ from .basic import _recv_big_data_
 
 def serialize_torch(data:torch.Tensor) -> bytes:
     buffer = io.BytesIO()
-    torch.save(data, buffer)
+    torch.save(data.cpu(), buffer)
     buffer.seek(0)
     return buffer.read()
 
