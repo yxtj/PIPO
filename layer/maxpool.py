@@ -59,11 +59,12 @@ class MaxPoolServer(LayerServer):
         last_pto = last_lyr.protocol if last_lyr is not None else None
         pto = self.protocol
         # set mp and sp
-        block = torch.ones(self.stride_shape, device=self.device)
-        mp = torch.kron(pto.m, block) # kronecker product
-        sp = torch.rand_like(mp)
-        self.protocol_pool.setup(self.ishape, mp.shape, s=sp, m=mp, last=last_pto)
+        # block = torch.ones(self.stride_shape, device=self.device)
+        # mp = torch.kron(pto.m, block) # kronecker product
+        # sp = torch.rand_like(mp)
+        # self.protocol_pool.setup(self.ishape, mp.shape, last=last_pto, s=sp, m=mp)
         # print("mp", mp)
+        self.protocol_pool = self.protocol.gen_mpooling(self.stride_shape)
         self.stat.time_offline += time.time() - t
         
     def cut_input(self, x: Union[torch.Tensor, np.ndarray]) -> Union[torch.Tensor, np.ndarray]:

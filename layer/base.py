@@ -58,7 +58,7 @@ class LayerServer(LayerCommon):
         t = time.time()
         assert last_lyr is None or isinstance(last_lyr, LayerServer)
         last_pto = last_lyr.protocol if last_lyr is not None else None
-        self.protocol.setup(self.ishape, self.oshape, s=None, m=m, last=last_pto)
+        self.protocol.setup(self.ishape, self.oshape, last=last_pto, s=None, m=m)
         self.stat.time_offline += time.time() - t
     
     def offline(self) -> np.ndarray:
@@ -102,8 +102,9 @@ class LocalLayerServer(LayerServer):
         t = time.time()
         assert isinstance(last_lyr, LayerServer)
         last_pto = last_lyr.protocol if last_lyr is not None else None
-        m = last_pto.m if last_pto is not None else m
-        self.protocol.setup(self.ishape, self.oshape, s=0, m=m, last=last_pto)
+        self.protocol.setup_local(self.ishape, self.oshape, last_pto)
+        # m = last_pto.m if last_pto is not None else m
+        # self.protocol.setup(self.ishape, self.oshape, last=last_pto, s=0, m=m)
         self.stat.time_offline += time.time() - t
         
     def offline(self) -> None:

@@ -30,7 +30,6 @@ class FlattenServer(LocalLayerServer):
         # flatten the last m and forward to the next layer
         t = time.time()
         last_pto = last_lyr.protocol if last_lyr is not None else None
-        m = self.layer(last_pto.m) if last_pto is not None else None
-        self.protocol.setup(self.ishape, self.oshape, s=0, m=m, last=last_pto)
+        self.protool = self.protocol.setup_local(self.ishape, self.oshape, last_pto, 'flatten')
         self.stat.time_offline += time.time() - t
     

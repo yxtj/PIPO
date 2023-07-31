@@ -89,12 +89,9 @@ class ProtocolBase():
 class ProBaseClient(ProtocolBase):
     def __init__(self, s: socket.socket, stat: Stat, he: Pyfhel, device: str='cpu'):
         super().__init__(s, stat, he, device)
-        self.r = None
-        self.pre = None
     
-    def setup(self, ishape:tuple, oshape:tuple, r: NumberType=None, **kwargs) -> None:
+    def setup(self, ishape:tuple, oshape:tuple, **kwargs) -> None:
         super().setup(ishape, oshape)
-        self.r = self._gen_add_share_(r, ishape)
         if USE_HE:
             b_ctx = self.he.to_bytes_context()
             self.socket.sendall(struct.pack('!i', len(b_ctx)) + b_ctx)
@@ -131,33 +128,31 @@ class ProBaseClient(ProtocolBase):
 class ProBaseServer(ProtocolBase):
     def __init__(self, s: socket.socket, stat: Stat, he: Pyfhel, device: str='cpu'):
         super().__init__(s, stat, he, device)
-        self.mlast = None
-        self.s = None
-        self.m = None
+        self.last = None
     
-    def setup(self, ishape: tuple, oshape: tuple, s: NumberType=None, m: NumberType=None,
-              last: ProtocolBase=None, **kwargs) -> None:
-        '''
-        if m is None, then generate m randomly (>0).
-        if s is None, then generate s randomly.
-        '''
+    def setup(self, ishape: tuple, oshape: tuple, last: ProtocolBase=None, **kwargs) -> None:
         super().setup(ishape, oshape)
-        mlast = last.m if last is not None else 1
-        self.mlast = mlast
-        self.s = self._gen_add_share_(s, oshape)
-        self.m = self._gen_mul_share_(m, oshape)
+        self.last = last
         if USE_HE:
             len = struct.unpack('!i', self.socket.recv(4))[0]
             b_ctx = self.socket.recv(len)
             self.he.from_bytes_context(b_ctx)
             self.stat.byte_offline_recv += 4 + len
     
+    def setup_local(self, ishape: tuple, oshape: tuple, last: ProtocolBase=None,
+        ltype: str='activation', **kwargs) -> None:
+        assert ltype in ['activation', 'flatten', 'identity']
+        raise NotImplementedError
+
+    def gen_mpooling(self, stride_shape: tuple) -> ProtocolBase:
+        raise NotImplementedError
+
     def send_offline(self, data: Union[torch.Tensor, np.ndarray]) -> None:
         raise NotImplementedError
     
     def recv_offline(self) -> Union[torch.Tensor, np.ndarray]:
         raise NotImplementedError
-    
+
     def basic_send_offline(self, data: Union[torch.Tensor, np.ndarray]) -> None:
         if USE_HE:
             # just send
