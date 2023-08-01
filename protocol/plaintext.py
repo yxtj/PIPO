@@ -68,6 +68,7 @@ class ProtocolServer(ProBaseServer):
     def recv_offline(self) -> Union[torch.Tensor, np.ndarray]:
         t0 = time.time()
         data, nbyte = comm.recv_torch(self.socket)
+        data = data.to(self.device)
         t1 = time.time()
         self.stat.byte_offline_recv += nbyte
         self.stat.time_offline_recv += t1 - t0
