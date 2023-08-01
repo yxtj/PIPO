@@ -29,7 +29,7 @@ def send_torch(s:socket.socket, data:torch.Tensor) -> int:
     s.sendall(data)
     return 4 + n
     
-def recv_torch(s:socket.socket, buf_sz:int=4096) -> tuple[torch.Tensor, int]:
+def recv_torch(s:socket.socket, buf_sz:int=65536) -> tuple[torch.Tensor, int]:
     data = s.recv(4)
     nbytes, = struct.unpack('!i', data)
     buffer = _recv_big_data_(s, nbytes, buf_sz)
