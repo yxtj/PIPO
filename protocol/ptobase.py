@@ -119,7 +119,7 @@ class ProBaseClient(ProtocolBase):
             data = heutil.decrypt(self.he, data)
         else:
             data, nbyte = comm.recv_torch(self.socket)
-            data = data.to(self.device)
+        data = data.to(self.device)
         self.stat.byte_offline_recv += nbyte
         return data
 
@@ -167,7 +167,7 @@ class ProBaseServer(ProtocolBase):
             data, nbyte = comm.recv_he_matrix(self.socket, self.he)
         else:
             data, nbyte = comm.recv_torch(self.socket)
-            data = data.to(self.device)
+        data = data.to(self.device)
         self.stat.byte_offline_recv += nbyte
         return data
     
