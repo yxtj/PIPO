@@ -1,10 +1,12 @@
 import setting
 
-AVAILABLE_PROTOCOL = ['scale', 'dual', 'shuffle', 'pad']
+AVAILABLE_PROTOCOL = ['plaintext', 'scale', 'dual', 'shuffle', 'pad']
 
 assert setting.PROTOCOL in AVAILABLE_PROTOCOL, f"Invalid protocol: {setting.PROTOCOL}. Available protocols: {AVAILABLE_PROTOCOL}"
 
-if setting.PROTOCOL == 'scale':
+if setting.PROTOCOL == 'plaintext':
+    from .plaintext import *
+elif setting.PROTOCOL == 'scale':
     from .scale import *
 elif setting.PROTOCOL == 'dual':
     from .dual import *
