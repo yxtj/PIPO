@@ -61,6 +61,22 @@ class Stat:
             _show_time_(self.time_online_comp/n),
         ))
 
+    def show_offline(self, promot:str=''):
+        print("{}: Offline time {}: send {} in {}, recv {} in {}, comp {}".format(
+            promot, _show_time_(self.time_offline),
+            _show_byte_(self.byte_offline_send), _show_time_(self.time_offline_send),
+            _show_byte_(self.byte_offline_recv), _show_time_(self.time_offline_recv),
+            _show_time_(self.time_offline_comp),
+        ))
+
+    def show_online(self, promot:str='', n:int=1):
+        print("{}: Online time {}: send {} in {}, recv {} in {}, comp {}".format(
+            promot, _show_time_(self.time_online/n),
+            _show_byte_(self.byte_online_send/n), _show_time_(self.time_online_send/n),
+            _show_byte_(self.byte_online_recv/n), _show_time_(self.time_online_recv/n),
+            _show_time_(self.time_online_comp/n),
+        ))
+
     def show_simple(self, promot:str='', n:int=1):
         print("{}: Offline time {}: send {}, recv {}. Online time {}: send {}, recv {}".format(
             promot, _show_time_(self.time_offline),
