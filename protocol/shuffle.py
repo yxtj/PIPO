@@ -1,88 +1,188 @@
 from .ptobase import ProBaseServer, ProBaseClient, NumberType
-
-import torch
-import numpy as np
-import comm
 from typing import Union
 
-from setting import USE_HE
+import socket
+import torch
+import time
+import numpy as np
+import comm
+from Pyfhel import Pyfhel
+
+from layer_basic.stat import Stat
+
+__ALL__ = ['ProtocolClient', 'ProtocolServer']
 
 
 class ProtocolClient(ProBaseClient):
-    def setup(self, ishape: tuple, oshape: tuple, r: NumberType=None) -> None:
-        super().setup(ishape, oshape, r)
+    def __init__(self, s: socket.socket, stat: Stat, he: Pyfhel, device: str='cpu'):
+        super().__init__(s, stat, he, device)
+        self.r = None
+        self.pre = None
+    
+    def setup(self, ishape:tuple, oshape:tuple, r: NumberType=None, **kwargs) -> None:
+        super().setup(ishape, oshape)
+        self.r = self._gen_add_share_(r, ishape)
 
+    def send_offline(self) -> None:
+        t = time.time()
+        self.basic_send_offline(self.r)
+        self.stat.time_offline_send += time.time() - t
+    
+    def recv_offline(self) -> torch.Tensor:
+        t0 = time.time()
+        data = self.basic_recv_offline()
+        t1 = time.time()
+        self.pre = data
+        t2 = time.time()
+        self.stat.time_offline_recv += t1 - t0
+        self.stat.time_offline_comp += t2 - t1
+        return data
+    
     def send_online(self, data: torch.Tensor) -> None:
+        t0 = time.time()
         data = data - self.r
+        t1 = time.time()
         self.stat.byte_online_send += comm.send_torch(self.socket, data)
+        t2 = time.time()
+        self.stat.time_online_comp += t1 - t0
+        self.stat.time_online_send += t2 - t1
 
     def recv_online(self) -> torch.Tensor:
+        t0 = time.time()
         data, nbyte = comm.recv_torch(self.socket)
+        data = data.to(self.device)
+        t1 = time.time()
+        data = data + self.pre
+        t2 = time.time()
         self.stat.byte_online_recv += nbyte
-        data  = data + self.pre
+        self.stat.time_online_recv += t1 - t0
+        self.stat.time_online_comp += t2 - t1
         return data
 
 
 class ProtocolServer(ProBaseServer):
-    def __init__(self, s, stat, he):
-        super().__init__(s, stat, he)
+    def __init__(self, s: socket.socket, stat: Stat, he: Pyfhel, device: str='cpu'):
+        super().__init__(s, stat, he, device)
+        self.mlast = None
+        self.rplast = None
+        self.s = None
+        self.m = None
+        self.p = None
+        self.rp = None
         self.offline_buffer = None # used to generate random data for offline phase
     
-    def setup(self, ishape: tuple, oshape: tuple, s: NumberType=None, m: NumberType=None,
-              last: ProBaseServer=None, **kwargs) -> None:
-            #   mlast: NumberType=1, Rlast: torch.Tensor=None
-        super().setup(ishape, oshape, s, m, last, **kwargs)
-        Rlast = last.Rlast if last is not None else None
-        assert len(Rlast) == np.prod(self.oshape)
-        self.Rlast = Rlast
-        n = np.prod(ishape)
-        self.S = torch.randperm(n).reshape(self.ishape) # shuffle matrix
-        self.R = torch.argsort(self.S.ravel()).reshape(self.ishape) # unshuffle matrix
+    def setup(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None,
+            s: NumberType=None, m: NumberType=None, p=None, **kwargs) -> None:
+        '''
+        If m is None, then generate m randomly (>0).
+        If s is None, then generate s randomly.
+        If p is None, then generate p randomly. If p is 1, then no shuffle.
+        '''
+        assert last is None or isinstance(last, ProtocolServer)
+        super().setup(ishape, oshape, last)
+        assert p is None or isinstance(p, int) or p.shape == ishape
+        mlast = last.m if last is not None else 1
+        self.mlast = mlast
+        if last is None:
+            self.rplast = 1
+        else:
+            self.rplast = torch.argsort(last.p.ravel()).reshape(self.ishape)
+        self.s = self._gen_add_share_(s, oshape)
+        self.m = self._gen_mul_share_(m, oshape)
+        if p is None:
+            n = np.prod(self.oshape)
+            self.p = torch.randperm(n).reshape(self.oshape) # shuffle matrix
+        else:
+            self.p = 1
+        # self.rp = torch.argsort(self.p.ravel()).reshape(self.ishape) # unshuffle matrix
     
-    def confuse_data(self, data: torch.Tensor) -> torch.Tensor:
-        '''
-        Shuffle input data.
-        Input: a tensor of shape "self.ishape".
-        Output: a tensor of shape "self.ishape".
-        '''
-        res = data.ravel()[self.S].reshape(self.ishape)
+    def setup_local(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None, 
+            ltype: str='activation',  **kwargs) -> None:
+        if ltype == 'flatten':
+            m = last.m.flatten(1, -1) if last is not None else 1
+        else:
+            m = last.m if last is not None else 1
+        s = 0
+        p = 1
+        self.setup(ishape, oshape, last, s, m, p)
+
+    def gen_mpooling(self, stride_shape: tuple) -> ProBaseServer:
+        block = torch.ones(stride_shape, device=self.device)
+        mp = torch.kron(self.m, block) # kronecker product
+        sp = torch.rand_like(mp)
+        # TODO: block-wise shuffle
+        self.p = 1
+        pp = 1
+        pro = ProtocolServer(self.socket, self.stat, self.he, self.device)
+        pro.setup(self.ishape, mp.shape, last=self.last, s=sp, m=mp, p=pp)
+        return pro
+        
+    def deshuflle_input(self, data: torch.Tensor) -> torch.Tensor:
+        if isinstance(self.rplast, int):
+            res = data
+        else:
+            res = data.ravel()[self.rplast].reshape(self.ishape)
         return res
-    
-    def clearify_data(self, data: Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
-        '''
-        Pick and unshuffle.
-        Input: a tensor of shape "self.oshape".
-        Output: a tensor of shape "self.oshape".
-        '''
-        #assert len(self.Rlast) == 2*np.prod(self.oshape) == np.prod(data.shape)
-        res = data.ravel()[self.Rlast].reshape(self.oshape)
+
+    def shuffle_output(self, data: torch.Tensor) -> torch.Tensor:
+        if isinstance(self.p, int):
+            res = data
+        else:
+            res = data.ravel()[self.p].reshape(self.oshape)
         return res
     
     def recv_offline(self) -> torch.Tensor:
-        if USE_HE:
-            data, nbytes = comm.recv_he_matrix(self.socket, self.he)
-        else:
-            data, nbytes = comm.recv_torch(self.socket)
-        self.stat.byte_offline_recv += nbytes
-        self.offline_buffer = data
-        data = self.clearify_data(data)
+        t0 = time.time()
+        data = self.basic_recv_offline()
+        t1 = time.time()
+        data = self.deshuflle_input(data)
+        if not (isinstance(self.mlast, (int, float)) and self.mlast == 1):
+            # print(data.device, self.mlast.device)
+            data /= self.mlast
+        t2 = time.time()
+        self.stat.time_offline_comp += t2 - t1
+        self.stat.time_offline_recv += t1 - t0
         return data
         
     def send_offline(self, data: np.ndarray) -> None:
-        data = self.confuse_data(data)
-        if USE_HE:
-            self.stat.byte_offline_send += comm.send_he_matrix(self.socket, data, self.he)
-        else:
-            self.stat.byte_offline_send += comm.send_torch(self.socket, data)
+        t0 = time.time()
+        data *= self.m
+        data = self.shuffle_output(data)
+        data += self.s
+        t1 = time.time()
+        self.basic_send_offline(data)
+        t2 = time.time()
+        self.stat.time_offline_comp += t1 - t0
+        self.stat.time_offline_send += t2 - t1
 
     def recv_online(self) -> torch.Tensor:
+        '''
+        Receive plast(x*mlast - r) from client.
+        Return x - r/mlast.
+        '''
+        t0 = time.time()
         data, nbyte = comm.recv_torch(self.socket)
+        data = data.to(self.device)
+        t1 = time.time()
+        data = self.deshuflle_input(data)
+        data /= self.mlast
+        t2 = time.time()
         self.stat.byte_online_recv += nbyte
-        data = self.clearify_data(data)
-        data = data/self.mlast
+        self.stat.time_online_recv += t1 - t0
+        self.stat.time_online_comp += t2 - t1
         return data
     
     def send_online(self, data: torch.Tensor) -> None:
-        data = data*self.m
-        data = self.confuse_data(data)
+        '''
+        Input data = W(x-r/mlast)
+        Send ( p(data*m) + s ) to client.
+        '''
+        t0 = time.time()
+        data *= self.m
+        data = self.shuffle_output(data)
+        data -= self.s
+        t1 = time.time()
         self.stat.byte_online_send += comm.send_torch(self.socket, data)
+        t2 = time.time()
+        self.stat.time_online_comp += t1 - t0
+        self.stat.time_online_send += t2 - t1

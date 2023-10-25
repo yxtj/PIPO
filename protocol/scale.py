@@ -110,7 +110,7 @@ class ProtocolServer(ProBaseServer):
     def send_offline(self, data: Union[torch.Tensor, np.ndarray]) -> None:
         t0 = time.time()
         data *= self.m
-        data -= self.s
+        data += self.s
         t1 = time.time()
         self.basic_send_offline(data)
         t2 = time.time()
@@ -138,7 +138,7 @@ class ProtocolServer(ProBaseServer):
         '''
         t0 = time.time()
         data *= self.m
-        data += self.s
+        data -= self.s
         t1 = time.time()
         self.stat.byte_online_send += comm.send_torch(self.socket, data)
         t2 = time.time()
