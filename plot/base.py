@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-def setup(figsize=(4, 3), fontsize=12):
+def setup(figsize=(4, 3), fontsize=14):
     plt.rcParams['font.family'] = ['sans-serif']
     plt.rcParams['font.sans-serif'] = ['Arial', 'Helvetica']
     plt.rcParams['font.size'] = fontsize

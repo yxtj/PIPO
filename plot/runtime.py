@@ -7,33 +7,33 @@ from plot.base import *
 # %% plot function
 
 def show_group_bar(data, names, ylabel, width=0.7,
-                   logscale=False, showvalue=False):
+                   logscale=False, showvalue=False, hatch=False):
     if not isinstance(data, np.ndarray):
         data = np.array(data)
     n, m = data.shape
     assert m == 2
     assert n == len(names)
+    fs = plt.rcParams['font.size']
     plt.figure()
     wb = width/m
     x = np.arange(n)
-    bc1 = plt.bar(x - wb/2, data[:, 0], wb, label='offline', hatch='///')
-    bc2 = plt.bar(x + wb/2, data[:, 1], wb, label='online', hatch='\\\\\\')
-    plt.xticks(x, names)
+    bc1 = plt.bar(x - wb/2, data[:, 0], wb, label='offline', hatch='///' if hatch else None)
+    bc2 = plt.bar(x + wb/2, data[:, 1], wb, label='online', hatch='\\\\\\' if hatch else None)
+    plt.xticks(x, names, fontsize=fs+2)
     if showvalue:
-        fs = plt.rcParams['font.size'] - 2
-        plt.bar_label(bc1, data[:, 0], fontsize=fs)
-        plt.bar_label(bc2, data[:, 1], fontsize=fs)
+        plt.bar_label(bc1, data[:, 0], fontsize=fs-2)
+        plt.bar_label(bc2, data[:, 1], fontsize=fs-2)
     if logscale:
         plt.yscale('log')
     # plt.legend(['offline', 'online'])
     # plt.legend()
-    plt.legend(borderpad=0.3, handletextpad=0.2, columnspacing=1)
-    plt.ylabel(ylabel)
+    plt.legend(borderpad=0.3, handletextpad=0.2, columnspacing=1, fontsize=fs)
+    plt.ylabel(ylabel, fontsize=fs+2)
     plt.tight_layout()
 
 
 def show_stack_bar(data, names, ylabel, width=0.7,
-                   logscale=False, showvalue=False):
+                   logscale=False, showvalue=False, hatch=False):
     hatches = ['/', '\\', '|', '-', '+', 'x', 'o', 'O', '.', '*']
     # plt.bar(x, y, fill=False, hatch='///')
     if not isinstance(data, np.ndarray):
@@ -41,33 +41,33 @@ def show_stack_bar(data, names, ylabel, width=0.7,
     n, m = data.shape
     assert m == 2
     assert n == len(names)
+    fs = plt.rcParams['font.size']
     plt.figure()
-    bc1 = plt.bar(range(n), data[:, 0], width, 0, label='offline', hatch='///')
-    bc2 = plt.bar(range(n), data[:, 1], width, data[:, 0], label='online', hatch='\\\\\\')
-    plt.xticks(range(n), names)
+    bc1 = plt.bar(range(n), data[:, 0], width, 0, label='offline', hatch='///' if hatch else None)
+    bc2 = plt.bar(range(n), data[:, 1], width, data[:, 0], label='online', hatch='\\\\\\' if hatch else None)
+    plt.xticks(range(n), names, fontsize=fs+2)
     if showvalue:
-        fs = plt.rcParams['font.size'] - 2
         bbox = dict(facecolor='white', alpha=0.8, edgecolor='white', pad=0.5)
-        plt.bar_label(bc1, data[:, 0], fontsize=fs, padding=-fs-2, bbox=bbox)
-        plt.bar_label(bc2, data[:, 1], fontsize=fs)
+        plt.bar_label(bc1, data[:, 0], fontsize=fs-2, padding=-fs-2, bbox=bbox)
+        plt.bar_label(bc2, data[:, 1], fontsize=fs-2)
     if logscale:
         plt.yscale('log')
     # plt.legend(['offline', 'online'])
     plt.legend()
-    plt.ylabel(ylabel)
+    plt.ylabel(ylabel, fontsize=fs+2)
     plt.tight_layout()
 
 
 def show_stack_bar_group(data, names, groups, ylabel, width=0.8,
-                         logscale=False, showvalue=False):
+                         logscale=False, showvalue=False, hatch=False):
     if not isinstance(data, np.ndarray):
         data = np.array(data)
     g, n, m = data.shape
     assert g == len(groups)
     assert n == len(names)
     assert m == 2
+    fs = plt.rcParams['font.size']
     if showvalue:
-        fs = plt.rcParams['font.size'] - 2
         bbox = dict(facecolor='white', alpha=0.8, edgecolor='white', pad=0.5)
     colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
     plt.figure()
@@ -81,14 +81,13 @@ def show_stack_bar_group(data, names, groups, ylabel, width=0.8,
         bc2 = plt.bar(x + offset + wb*i, data[:, i, 1], wb, data[:, i, 0],
                       color=colors[i], edgecolor='black', label=nm+' on.', hatch='\\\\\\')
         if showvalue:
-            plt.bar_label(bc1, data[i, :, 0], fontsize=fs, padding=-fs-2, bbox=bbox)
-            plt.bar_label(bc2, data[i, :, 1], fontsize=fs)
+            plt.bar_label(bc1, data[i, :, 0], fontsize=fs-2, padding=-fs-2, bbox=bbox)
+            plt.bar_label(bc2, data[i, :, 1], fontsize=fs-2)
     if logscale:
         plt.yscale('log')
-    plt.xticks(x, groups)
-    plt.ylabel(ylabel)
-    fs = plt.rcParams['font.size'] - 3
-    plt.legend(ncol=2, fontsize=fs, borderpad=0.3, handletextpad=0.2, columnspacing=1)
+    plt.xticks(x, groups, fontsize=fs-2)
+    plt.ylabel(ylabel, fontsize=fs-2)
+    plt.legend(ncol=2, fontsize=fs-3, borderpad=0.3, handletextpad=0.2, columnspacing=1)
     plt.tight_layout()
 
 
@@ -115,6 +114,7 @@ show_group_bar(act_time[1:], act_name[1:], 'Execute time (s)', 0.8, True, True)
 plt.ylim(None, 100)
 plt.text(-0.2, 0.008, '0', fontsize=plt.rcParams['font.size']-2)
 
+show_group_bar(act_time[1:], act_name[1:], 'Execute time (s)', 0.8, True, True)
 plt.ylim(None, 150)
 plt.text(-0.2, 0.002, '0', fontsize=plt.rcParams['font.size']-2)
 
@@ -139,8 +139,8 @@ plt.text(0.2, 0.0017, '0', fontsize=plt.rcParams['font.size']-2)
 # pool_name = ['max-pool', 'avg-pool']
 # pool_name = ['max pool', 'avg pool']
 
-pool_name, pool_time = load_time('pooling.csv')
-pool_name, pool_comm = load_comm('pooling.csv')
+pool_name, pool_time = load_time('pool.csv')
+pool_name, pool_comm = load_comm('pool.csv')
 
 ylbl_time = 'Total execution time (s)'
 ylbl_tomm = 'Total data transferred (MB)'
