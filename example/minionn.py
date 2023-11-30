@@ -1,10 +1,11 @@
 import sys
 import torch
-from Pyfhel import Pyfhel
 
 from model import minionn
 from system.runner import run_client, run_server
 from setting import USE_HE
+if USE_HE:
+    from Pyfhel import Pyfhel
 
 if __name__ == '__main__':
     argv = sys.argv

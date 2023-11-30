@@ -2,11 +2,12 @@ import sys
 import time
 import torch
 import socket
-from Pyfhel import Pyfhel
 
 from model import poc
 import system
-
+from setting import USE_HE
+if USE_HE:
+    from Pyfhel import Pyfhel
 
 if __name__ == '__main__':
     argv = sys.argv
@@ -63,9 +64,12 @@ if __name__ == '__main__':
         for i, lyr in enumerate(server.layers):
             print("  Layer {} {}: {}".format(i, lyr.__class__.__name__, lyr.stat))
     else:
-        he = Pyfhel()
-        he.contextGen(scheme='ckks', n=2**13, scale=2**30, qi_sizes=[30]*5)
-        he.keyGen()
+        if USE_HE:
+            he = Pyfhel()
+            he.contextGen(scheme='ckks', n=2**13, scale=2**30, qi_sizes=[30]*5)
+            he.keyGen()
+        else:
+            he = None
         s = socket.create_connection((host, port))
         print("Client is connecting to {}:{}".format(host, port))
         t0 = time.time()

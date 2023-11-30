@@ -1,12 +1,12 @@
 import socket
 import torch
 import torch.nn as nn
-from Pyfhel import Pyfhel
+# from Pyfhel import Pyfhel
 
 from system import util
 
 class Client():
-    def __init__(self, socket: socket.socket, model: nn.Module, inshape: tuple, he: Pyfhel):
+    def __init__(self, socket: socket.socket, model: nn.Module, inshape: tuple, he):
         self.socket = socket
         # model
         self.model = model

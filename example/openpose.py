@@ -1,10 +1,11 @@
 import sys
 import torch
-from Pyfhel import Pyfhel
 
 from model import openpose
 from system.runner import run_client, run_server
 from setting import USE_HE
+if USE_HE:
+    from Pyfhel import Pyfhel
 
 if __name__ == '__main__':
     argv = sys.argv
@@ -25,6 +26,8 @@ if __name__ == '__main__':
     
     # set model and inshape
     inshape = openpose.inshape
+    if wfile.lower() == 'none':
+        wfile = None
     model = openpose.build(type, wfile)
     if device.startswith('cuda') and torch.cuda.is_available():
         model = model.to(device)
