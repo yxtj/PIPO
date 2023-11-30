@@ -9,7 +9,7 @@ from Pyfhel import Pyfhel
 
 class AvgPoolClient(LayerClient):
     def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel,
-                 layer:torch.nn.AvgPool2d) -> None:
+                 layer:torch.nn.AvgPool2d, device:str) -> None:
         super().__init__(socket, ishape, oshape, he, device)
         
 
