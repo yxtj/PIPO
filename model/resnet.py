@@ -1,133 +1,115 @@
-# reference: https://github.com/akamaster/pytorch_resnet_cifar10/blob/master/resnet.py
-
 # import torch
 import torch.nn as nn
 import torch_extension as te
 
-inshape = (3, 32, 32)
+inshape = (3, 224, 224)
 
 # 3x3 convolution
 def conv3x3(in_channels, out_channels, stride=1):
     return nn.Conv2d(in_channels, out_channels, 3, 
                      stride=stride, padding=1, bias=False)
 
-def build_downsample_block(in_channels, out_channels, stride, batch_norm):
+def conv1x1(in_channels, out_channels, stride=1):
+    return nn.Conv2d(in_channels, out_channels, 1, 
+                     stride=stride, padding=0, bias=False)
+
+def basicblock(in_channels, out_channels, stride=1, batch_norm=False):
+    downsample = in_channels != out_channels or stride != 1
+    norm = nn.BatchNorm2d if batch_norm else lambda x: None
     if batch_norm:
-        layers = [
-            conv3x3(in_channels, out_channels, stride),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(),
-            conv3x3(out_channels, out_channels),
-            nn.BatchNorm2d(out_channels),
-        ]
-        if stride == 1:
-            layers.append(te.Addition(-6))
+        offset_ds = -6
+        offset_add = -4 if downsample else offset_ds
     else:
-        layers = [
-            conv3x3(in_channels, out_channels, stride),
-            nn.ReLU(),
-            conv3x3(out_channels, out_channels),
-        ]
-        if stride == 1:
-            layers.append(te.Addition(-4))
+        offset_ds = -4
+        offset_add = -3 if downsample else offset_ds
+    layers = [
+        conv3x3(in_channels, out_channels, stride),
+        norm(out_channels),
+        nn.ReLU(),
+        conv3x3(out_channels, out_channels),
+        norm(out_channels),
+    ]
+    if downsample:
+        layers.extend([
+            te.Jump(offset_ds),
+            conv1x1(in_channels, out_channels, stride),
+            norm(out_channels),
+        ])
+    layers = [ lyr for lyr in layers if lyr is not None ]
+    layers.append(te.Addition(offset_add))
     layers.append(nn.ReLU())
     return layers
-    
-def build_identity_block(channels, batch_norm):
+
+def bottleneck(in_planes, out_planes, stride=1, batch_norm=False):
+    expansion = 4
+    in_channels = in_planes * expansion
+    mid_channels = out_planes
+    out_channels = out_planes * expansion
+    downsample = in_planes != out_planes or stride != 1
+    norm = nn.BatchNorm2d if batch_norm else lambda x: None
     if batch_norm:
-        layers = [
-            conv3x3(channels, channels),
-            nn.BatchNorm2d(channels),
-            nn.ReLU(),
-            conv3x3(channels, channels),
-            nn.BatchNorm2d(channels),
-            te.Addition(-6),
-            nn.ReLU(),
-        ]
+        offset_ds = -9
+        offset_add = -4 if downsample else offset_ds
     else:
-        layers = [
-            conv3x3(channels, channels),
-            nn.ReLU(),
-            conv3x3(channels, channels),
-            te.Addition(-4),
-            nn.ReLU(),
-        ]
+        offset_ds = -6
+        offset_add = -3 if downsample else offset_ds
+    layers = [
+        conv1x1(in_channels, mid_channels, stride),
+        norm(mid_channels),
+        nn.ReLU(),
+        conv3x3(mid_channels, mid_channels),
+        norm(mid_channels),
+        nn.ReLU(),
+        conv1x1(mid_channels, out_channels),
+        norm(out_channels),
+    ]
+    if downsample:
+        layers.extend([
+            te.Jump(offset_ds),
+            conv1x1(in_channels, out_channels, stride),
+            norm(out_channels),
+        ])
+    layers = [ lyr for lyr in layers if lyr is not None ]
+    layers.append(te.Addition(offset_add))
+    layers.append(nn.ReLU())
     return layers
 
-def build_block(layer_size, in_channels, out_channels, stride, batch_norm):
-    layers = build_downsample_block(in_channels, out_channels, stride, batch_norm)
-    for i in range(layer_size-1):
-        layers.extend(build_identity_block(out_channels, batch_norm))
-    return layers
-
-def build_resnet(num_blocks, num_class=100, version=1, residual=True, batch_norm=False):
-    # layer 0: 3x32x32 -> 16x32x32
-    layers = [ conv3x3(3, 16), nn.ReLU() ]
-    # layer 1: 16x32x32 -> 16x32x32
-    layers.extend(build_block(num_blocks[0], 16, 16, 1, batch_norm))
-    # layer 2: 16x32x32 -> 32x16x16
-    layers.extend(build_block(num_blocks[1], 16, 32, 2, batch_norm))
-    # layer 3: 32x16x16 -> 64x8x8
-    layers.extend(build_block(num_blocks[2], 32, 64, 2, batch_norm))
+def build_resnet(block, num_blocks, num_class=1000, batch_norm=False):
+    expansion = 1 if block == basicblock else 4
+    # conv1: 3x224x224 -> 64x112x112
+    if batch_norm:
+        layers = [ nn.Conv2d(3, 64, 7, 2, 3, bias=False), nn.BatchNorm2d(64), nn.ReLU()]
+    else:
+        layers = [ nn.Conv2d(3, 64, 7, 2, 3, bias=False), nn.ReLU(), ]
+    # maxpool: 64x112x112 -> 64x56x56
+    # layers.append(nn.MaxPool2d(3, 2, 1))
+    layers.append(nn.MaxPool2d(2, 2, 0)) # the kernel size should be 3x3, will support in the future
+    # layer 1: 64x56x56 -> 64x56x56, or 64x56x56 -> 256x56x56
+    layers.extend(block(64//expansion, 64, batch_norm=batch_norm))
+    # layer 2: 64x56x56 -> 128x28x28, or 256x56x56 -> 512x28x28
+    layers.extend(block(64, 128, 2, batch_norm=batch_norm))
+    # layer 3: 128x28x28 -> 256x14x14, or 512x28x28 -> 1024x14x14
+    layers.extend(block(128, 256, 2, batch_norm=batch_norm))
+    # layer 4: 256x14x14 -> 512x7x7, or 1024x14x14 -> 2048x7x7
+    layers.extend(block(256, 512, 2, batch_norm=batch_norm))
     # pooling and fc
-    if version == 1: # cifar10
-        layers.extend([
-            nn.AvgPool2d(8),
-            nn.Flatten(),
-            nn.Linear(64, num_class),
-        ])
-    elif version == 2: # cifar10
-        layers.extend([
-            nn.Conv2d(64, 64, 8, 8, bias=False),
-            nn.Flatten(),
-            nn.Linear(64, num_class),
-        ])
-    elif version == 3: # cifar100
-        layers.extend([
-            nn.Flatten(),
-            nn.Linear(4096, num_class),
-        ])
-    elif version == 4: # cifar100
-        layers.extend([
-            nn.AvgPool2d(2),
-            nn.Flatten(),
-            nn.Linear(1024, num_class),
-        ])
-    if not residual:
-        layers = [ lyr for lyr in layers if not isinstance(lyr, te.Addition) ]
-    #layers.append(nn.Softmax(dim=1))
+    layers.extend([
+        nn.AvgPool2d(7),
+        nn.Flatten(),
+        nn.Linear(512*expansion, num_class),
+    ])
     return te.SequentialShortcut(*layers)
 
-def resnet20(version=3, residual=True, batch_norm=False):
-    return build_resnet([3, 3, 3], 100, version, residual, batch_norm)
-
-def resnet32(version=3, residual=True, batch_norm=False):
-    return build_resnet([5, 5, 5], 100, version, residual, batch_norm)
-
-def resnet44(version=3, residual=True, batch_norm=False):
-    return build_resnet([7, 7, 7], 100, version, residual, batch_norm)
-
-def resnet56(version=3, residual=True, batch_norm=False):
-    return build_resnet([9, 9, 9], 100, version, residual, batch_norm)
-
-def resnet110(version=3, residual=True, batch_norm=False):
-    return build_resnet([18, 18, 18], 100, version, residual, batch_norm)
-
-def resnet152(version=3, residual=True, batch_norm=False):
-    return build_resnet([24, 24, 24], 100, version, residual, batch_norm)
-
-def build(depth, version=3, residual=True, batch_norm=False):
-    if depth == 20:
-        return resnet20(version, residual, batch_norm)
-    elif depth == 32:
-        return resnet32(version, residual, batch_norm)
-    elif depth == 44:
-        return resnet44(version, residual, batch_norm)
-    elif depth == 56:
-        return resnet56(version, residual, batch_norm)
-    elif depth == 110:
-        return resnet110(version, residual, batch_norm)
+def build(depth, num_class=1000, batch_norm=False):
+    if depth == 18:
+        return build_resnet(basicblock, [2, 2, 2, 2], num_class, batch_norm)
+    elif depth == 34:
+        return build_resnet(basicblock, [3, 4, 6, 3], num_class, batch_norm)
+    elif depth == 50:
+        return build_resnet(bottleneck, [3, 4, 6, 3], num_class, batch_norm)
+    elif depth == 101:
+        return build_resnet(bottleneck, [3, 4, 23, 3], num_class, batch_norm)
     elif depth == 152:
-        return resnet152(version, residual, batch_norm)
+        return build_resnet(bottleneck, [3, 8, 36, 3], num_class, batch_norm)
     else:
-        raise ValueError("depth must be 20, 32, 44, 56, 110, or 152")
+        raise ValueError("depth must be in [18, 34, 50, 101, 152]")
