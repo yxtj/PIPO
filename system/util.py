@@ -17,6 +17,7 @@ def compute_shape(model, inshape):
     shapes = [inshape]
     if isinstance(model, te.SequentialShortcut):
         for i, lyr in enumerate(model):
+            # print(i, lyr, tuple(t.shape))
             if i in model.dependency:
                 for j in model.dependency[i]:
                     model[j].update(i-j-1, t)

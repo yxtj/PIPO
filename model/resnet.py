@@ -54,10 +54,10 @@ def bottleneck(in_planes, out_planes, stride=1, batch_norm=False):
         offset_ds = -6
         offset_add = -3 if downsample else offset_ds
     layers = [
-        conv1x1(in_channels, mid_channels, stride),
+        conv1x1(in_channels, mid_channels),
         norm(mid_channels),
         nn.ReLU(),
-        conv3x3(mid_channels, mid_channels),
+        conv3x3(mid_channels, mid_channels, stride),
         norm(mid_channels),
         nn.ReLU(),
         conv1x1(mid_channels, out_channels),
@@ -74,6 +74,12 @@ def bottleneck(in_planes, out_planes, stride=1, batch_norm=False):
     layers.append(nn.ReLU())
     return layers
 
+def make_block(block, in_planes, out_planes, num_blocks, stride, batch_norm=False):
+    layers = block(in_planes, out_planes, stride, batch_norm)
+    for _ in range(1, num_blocks):
+        layers.extend(block(out_planes, out_planes, 1, batch_norm))
+    return layers
+
 def build_resnet(block, num_blocks, num_class=1000, batch_norm=False):
     expansion = 1 if block == basicblock else 4
     # conv1: 3x224x224 -> 64x112x112
@@ -85,13 +91,13 @@ def build_resnet(block, num_blocks, num_class=1000, batch_norm=False):
     # layers.append(nn.MaxPool2d(3, 2, 1))
     layers.append(nn.MaxPool2d(2, 2, 0)) # the kernel size should be 3x3, will support in the future
     # layer 1: 64x56x56 -> 64x56x56, or 64x56x56 -> 256x56x56
-    layers.extend(block(64//expansion, 64, batch_norm=batch_norm))
+    layers.extend(make_block(block, 64//expansion, 64, num_blocks[0], 1, batch_norm))
     # layer 2: 64x56x56 -> 128x28x28, or 256x56x56 -> 512x28x28
-    layers.extend(block(64, 128, 2, batch_norm=batch_norm))
+    layers.extend(make_block(block, 64, 128, num_blocks[1], 2, batch_norm))
     # layer 3: 128x28x28 -> 256x14x14, or 512x28x28 -> 1024x14x14
-    layers.extend(block(128, 256, 2, batch_norm=batch_norm))
+    layers.extend(make_block(block, 128, 256, num_blocks[2], 2, batch_norm))
     # layer 4: 256x14x14 -> 512x7x7, or 1024x14x14 -> 2048x7x7
-    layers.extend(block(256, 512, 2, batch_norm=batch_norm))
+    layers.extend(make_block(block, 256, 512, num_blocks[3], 2, batch_norm))
     # pooling and fc
     layers.extend([
         nn.AvgPool2d(7),
