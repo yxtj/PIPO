@@ -3,6 +3,7 @@
 import torch
 import torch.nn as nn
 
+# %% pre-image
 
 def gen_preimage_model(conv: nn.Conv2d):
     r = nn.ConvTranspose2d(conv.in_channels, conv.out_channels, conv.kernel_size,
@@ -11,6 +12,31 @@ def gen_preimage_model(conv: nn.Conv2d):
     r.weight.data = w
     return r
 
+# https://github.com/scikit-image/scikit-image/blob/v0.22.0/skimage/restoration/deconvolution.py
+
+def deconv(y, conv: nn.Conv2d, num_iter, lam=0.7):
+    """
+    y: 4-dimensional input, NCHW format
+    assume convolution kernel is square
+    """
+    w = conv.weight.data
+    pad = w.shape[-1]//2
+
+    if conv.bias:
+        y = y - conv.bias
+    y = torch.nn.functional.pad(y, (pad+1,pad+1,pad+1,pad+1), mode='reflect')
+    x = torch.full(y.shape, 0.5).to(y.device)
+
+    for _ in range(num_iter):
+        conv = torch.conv2d(x, w, padding=pad)
+        residual = y - conv
+        conv2 = torch.conv2d(residual, torch.flip(w, [0, 1, 2, 3]), padding=pad)
+        x = x - lam * conv2
+        # x = torch.clip(x, -1, 1)
+    return x
+
+
+# %% extract
 
 @torch.no_grad()
 def gradient(model, x, step):
@@ -33,6 +59,10 @@ def check_layer(model, x, eps):
 
 
 def binary_probe_cp_idx(model, start, step, zero_thr, f, l, df, dl):
+    '''
+    y: first index (inclusive)
+    l: last index (exclusive)
+    '''
     if torch.abs(df - dl) <= zero_thr:
         return []
     if f >= l:
@@ -51,14 +81,14 @@ def binary_probe_cp_idx(model, start, step, zero_thr, f, l, df, dl):
     else:
         res2 = []
     return res1 + res2
-    
+
 
 @torch.no_grad()
 def probe_cp(model, start, end, eps, zero_thr=1e-8):
     dist = torch.dist(start, end)
     n = int(dist//eps)
     step = (end - start) / n
-    
+
     df = model(start+step)-model(start)
     dl = model(end+step)-model(end)
     idx = binary_probe_cp_idx(model, start, step, zero_thr*eps, 0, n, df, dl)
@@ -69,27 +99,27 @@ def probe_cp(model, start, end, eps, zero_thr=1e-8):
 def extract(model, start, end, eps=1e-6):
     # find critical points
     cps = probe_cp(model, start, end, eps)
-    
+
     # identify layers
-    
+
     # extract weights
 
 
 # %% test
 
-def __test_binary_probe__():
+def __test_poc_binary_probe__():
     m1 = nn.Sequential(nn.Conv(1,1,3), nn.ReLU())
     eps = 1e-4
-    
+
     start = torch.rand(1,3,3)
     end = -start
     rs, re = m1(start), m1(end)
     print(rs, re)
     assert rs * re == 0.0 and rs + re > 0.0
-    
+
     n = int(torch.dist(start, end)/eps)
     step = (end-start)/n
-    
+
     a,b = start,end
     while torch.dist(a,b)>eps:
         ga=m1(a+step)-m1(a)
@@ -107,7 +137,7 @@ def __test_binary_probe__():
         else:
             b = mid-step
             print('left')
-    
+
     print(gradient(m1, a, step))
     print(gradient(m1, b, step))
 
