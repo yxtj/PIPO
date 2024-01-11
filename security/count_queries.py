@@ -17,19 +17,25 @@ model_lenet=[(6,5), 2, (16,5), 2, (1,5)]
 # '3x227x227, 96c11-p4-p2-256c5-p2-384c3-384c3-384c3-p2-9216c1-4096c1-4096c1-1c1'
 model_alex=[(96,11),4,2, (256,5),2, (384,3),(384,3),(384,3),2, (9216,1), (4096,1),(4096,1),(1,1)]
 
-model_vgg11=[(64,3)] +[2]+ [(128,3)]  +[2]+ [(256,3)]*2 +[2]+ [(512,3)]*2 +[2]+ [(512,3)]*2 +[2,(4096,1),(1,1)]
-model_vgg13=[(64,3)]*2 +[2]+ [(128,3)]*2  +[2]+ [(256,3)]*2 +[2]+ [(512,3)]*2 +[2]+ [(512,3)]*2 +[2,(4096,1),(1,1)]
-model_vgg16=[(64,3)]*2 +[2]+ [(128,3)]*2  +[2]+ [(256,3)]*3 +[2]+ [(512,3)]*3 +[2]+ [(512,3)]*3 +[2,(4096,1),(1,1)]
-model_vgg19=[(64,3)]*2 +[2]+ [(128,3)]*2  +[2]+ [(256,3)]*4 +[2]+ [(512,3)]*4 +[2]+ [(512,3)]*4 +[2,(4096,1),(1,1)]
+# model_vgg11=[(64,3)] +[2]+ [(128,3)]  +[2]+ [(256,3)]*2 +[2]+ [(512,3)]*2 +[2]+ [(512,3)]*2 +[2,(4096,7),(1,1)]
+# model_vgg13=[(64,3)]*2 +[2]+ [(128,3)]*2  +[2]+ [(256,3)]*2 +[2]+ [(512,3)]*2 +[2]+ [(512,3)]*2 +[2,(4096,7),(1,1)]
+# model_vgg16=[(64,3)]*2 +[2]+ [(128,3)]*2  +[2]+ [(256,3)]*3 +[2]+ [(512,3)]*3 +[2]+ [(512,3)]*3 +[2,(4096,7),(1,1)]
+# model_vgg19=[(64,3)]*2 +[2]+ [(128,3)]*2  +[2]+ [(256,3)]*4 +[2]+ [(512,3)]*4 +[2]+ [(512,3)]*4 +[2,(4096,7),(1,1)]
 
-model_res18=[(64,7), 2] + [(64,3)]*2 +[2]+ [(128,3)]*2 +[2]+ [(256,3)]*2 +[2]+ [(512,3)]*2 + [(1000,7), (1,1)]
-model_res34=[(64,7), 2] + [(64,3)]*3 +[2]+ [(128,3)]*4 +[2]+ [(256,3)]*6 +[2]+ [(512,3)]*3 + [(1000,7), (1,1)]
+model_vgg11=[(64,3)] +[2]+ [(128,3)]  +[2]+ [(256,3)]*2 +[2]+ [(512,3)]*2 +[2]+ [(512,3)]*2 +[2,(1,7)]
+model_vgg13=[(64,3)]*2 +[2]+ [(128,3)]*2  +[2]+ [(256,3)]*2 +[2]+ [(512,3)]*2 +[2]+ [(512,3)]*2 +[2,(1,7)]
+model_vgg16=[(64,3)]*2 +[2]+ [(128,3)]*2  +[2]+ [(256,3)]*3 +[2]+ [(512,3)]*3 +[2]+ [(512,3)]*3 +[2,(1,7)]
+model_vgg19=[(64,3)]*2 +[2]+ [(128,3)]*2  +[2]+ [(256,3)]*4 +[2]+ [(512,3)]*4 +[2]+ [(512,3)]*4 +[2,(1,7)]
+
+
+model_res18=[(64,7), 2] + [(64,3)]*2 +[2]+ [(128,3)]*2 +[2]+ [(256,3)]*2 +[2]+ [(512,3)]*2 + [7, (1,1)]
+model_res34=[(64,7), 2] + [(64,3)]*3 +[2]+ [(128,3)]*4 +[2]+ [(256,3)]*6 +[2]+ [(512,3)]*3 + [7, (1,1)]
 model_res50=[(64,7), 2] + [(64,1), (64,3), (256,1)]*3 +[2]+ [(128,1), (128,3), (512,1)]*4 +[2]+\
-    [(256,1), (256,3), (1024,1)]*6 +[2]+ [(512,1), (512,3), (2048,1)]*5 + [(1000,7), (1,1)]
+    [(256,1), (256,3), (1024,1)]*6 +[2]+ [(512,1), (512,3), (2048,1)]*5 + [7, (1,1)]
 model_res101=[(64,7), 2] + [(64,1), (64,3), (256,1)]*3 +[2]+ [(128,1), (128,3), (512,1)]*4 +[2]+\
-    [(256,1), (256,3), (1024,1)]*23 +[2]+ [(512,1), (512,3), (2048,1)]*5 + [(1000,7), (1,1)]
+    [(256,1), (256,3), (1024,1)]*23 +[2]+ [(512,1), (512,3), (2048,1)]*5 + [7, (1,1)]
 model_res152=[(64,7), 2] + [(64,1), (64,3), (256,1)]*3 +[2]+ [(128,1), (128,3), (512,1)]*8 +[2]+\
-    [(256,1), (256,3), (1024,1)]*36 +[2]+ [(512,1), (512,3), (2048,1)]*5 + [(1000,7), (1,1)]
+    [(256,1), (256,3), (1024,1)]*36 +[2]+ [(512,1), (512,3), (2048,1)]*5 + [7, (1,1)]
 
 # %% supporting functions
 
@@ -85,12 +91,15 @@ def comp_radius(model):
     res = list(reversed(res))
     return res
 
-def comp_param(model, c=3):
+def comp_param(model, c=3, bias=False):
     res = []
+    n = c
     for i, m in enumerate(model):
         if isinstance(m, tuple): # convolution
             n, k = m
             v = n * c * k**2
+            if bias is True:
+                v += c
         else: # pooling
             k = m
             v = 0
@@ -102,6 +111,7 @@ def comp_param(model, c=3):
 
 def attack_adaptive(model, c0=3, lmbda=1e9):
     c = c0
+    n = c
     Ds = comp_radius(model)
     D0, Ds = Ds[0], Ds[1:]
     res = []
@@ -122,6 +132,7 @@ def attack_adaptive(model, c0=3, lmbda=1e9):
 
 def attack_adaptive_lb(model, c0=3):
     c = c0
+    n = c
     Ds = comp_radius(model)
     D0, Ds = Ds[0], Ds[1:]
     res = []
@@ -142,6 +153,7 @@ def attack_adaptive_lb(model, c0=3):
 def attack_adaptive_semi(model, c0=3):
     CF = math.log(2)
     c = c0
+    n = c
     Ds = comp_radius(model)
     D0, Ds = Ds[0], Ds[1:]
     res = []
@@ -162,6 +174,7 @@ def attack_adaptive_semi(model, c0=3):
 def attack_adaptive_mal(model, c0=3):
     CF = math.log(2)
     c = c0
+    n = c
     Ds = comp_radius(model)
     D0, Ds = Ds[0], Ds[1:]
     res = []
@@ -181,6 +194,7 @@ def attack_adaptive_mal(model, c0=3):
 
 def attack_blackbox_worst(model, c0=3, lmbda=1e8):
     c = c0
+    n = c
     Cs = np.array([(m[0] if isinstance(m, tuple) else 0) for m in model])
     Ds = comp_radius(model)
     D0, Ds = Ds[0], Ds[1:]
@@ -192,14 +206,15 @@ def attack_blackbox_worst(model, c0=3, lmbda=1e8):
         if isinstance(m, tuple): # convolution
             n, k = m
             p = As[i] / Bs[i]
-            En = (Cs[i]+1)/Cs[i]/p
+            En = (n+1)/n/p
             Np = np.log2(lmbda) + (En-1)*np.log2(lmbda/En)
             Nc = En
-            #Nf = (Cs[i]-1)*p*En+1 # average value
+            #Nf = (n-1)*p*En+1 # average value
             Nf = n # approxmated value
-            # v = 2*(Np*(As[i]/k**2) + Nc*(k+1) + Nf*Cs[i-1]*k**2)
-            v = 3*Np + 2*Nc*(As[i]/k**2) + 2*Nf*Cs[i-1]*k**2
-            # v = 2*(np.log2(lmbda*p)/p*(L-i)**2 + Nc*(k+1) + Nf*Cs[i-1]*k**2)
+            # v = 2*(Np*(As[i]/k**2) + Nc*(k+1) + Nf*c*k**2)
+            v = 2*Np + 2*Nc*(As[i]/k**2) + 2*Nf*c*k**2
+            # v = 2*(np.log2(lmbda*p)/p*(L-i)**2 + Nc*(k+1) + Nf*c*k**2)
+            # print(n, k, c, Np, Nc, Nf*c*k**2, v)
         else: # pooling
             k = m
             v = 0
@@ -209,6 +224,7 @@ def attack_blackbox_worst(model, c0=3, lmbda=1e8):
 
 def attack_blackbox_reuse(model, c0=3, lmbda=1e8, ratio_left=0.4):
     c = c0
+    n = c
     Cs = np.array([(m[0] if isinstance(m, tuple) else 0) for m in model])
     Ds = comp_radius(model)
     D0, Ds = Ds[0], Ds[1:]
@@ -220,13 +236,14 @@ def attack_blackbox_reuse(model, c0=3, lmbda=1e8, ratio_left=0.4):
         if isinstance(m, tuple): # convolution
             n, k = m
             p = As[i] / Bs[i]
-            En = (Cs[i]+1)/Cs[i]/p
+            En = (n+1)/n/p
             En_new = (ratio_left*En) if i != 0 else En
             Np = np.log2(lmbda) + (En_new-1)*np.log2(lmbda/En)
-            Nc = En
+            Nc = En_new
             Nf = n
             # v = 2*(Np + Nc*(k+1) + Nf*Cs[i-1]*k**2)
-            v = 3*Np + 2*Nc*(As[i]/k**2) + 2*Nf*Cs[i-1]*k**2
+            # v = 3*Np + 2*Nc*(As[i]/k**2) + 2*Nf*Cs[i-1]*k**2
+            v = 2*Np + 2*Nc*(As[i]/k**2) + 2*Nf*c*k**2
         else: # pooling
             k = m
             v = 0
@@ -236,6 +253,7 @@ def attack_blackbox_reuse(model, c0=3, lmbda=1e8, ratio_left=0.4):
 
 def attack_exp(model, c0=3):
     c = c0
+    n = c
     Cs = np.array([(m[0] if isinstance(m, tuple) else 0) for m in model])
     C = sum(Cs)
     Ds = comp_radius(model)
@@ -256,7 +274,7 @@ def attack_exp(model, c0=3):
         c = n
     return sum(res), res
 
-# %%
+# %% show
 
 def show(model, c0=3, lmbda=1e9):
     param = comp_param(model, c0)[0]
@@ -266,7 +284,7 @@ def show(model, c0=3, lmbda=1e9):
         # attack_adaptive_mal(model, c0)[0],
         attack_blackbox_worst(model, c0, lmbda)[0],
         attack_blackbox_reuse(model, c0, lmbda, 0.4)[0],
-        attack_exp(model, c0)[0]
+        # attack_exp(model, c0)[0]
         )
     logdata = np.log2(data)
     print(param, ' '.join('%.4f'%v for v in logdata))
