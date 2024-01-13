@@ -8,15 +8,15 @@ import re
 model1=[(10,3), (1,3)]
 model2=[(32,3), (16,3), (1,3)]
 model3=[(16,5), (16,5), (1,5)]
-model4=[(16,3), (32,3), (32,3), (1,3)]
-model5=[(10,3), (10,3), (10,3), (10,3), (1,3)]
+model4=[(10,3), (10,3), (10,3), (1,3)]
+model5=[(16,3), (32,3), (32,3), (1,3)]
 model6=[(6,5), (6,5), (16,5), (16,5), (1,12)] # mnist
 
 # '3x32x32, 6c5-p2-16c5-p2-120c5-84c1-1c1'
 model_lenet=[(6,5), 2, (16,5), 2, (1,5)]
-# '3x227x227, 96c11-p4-p2-256c5-p2-384c3-384c3-384c3-p2-9216c1-4096c1-4096c1-1c1'
-model_alex=[(96,11),4,2, (256,5),2, (384,3),(384,3),(384,3),2, (9216,1), (4096,1),(4096,1),(1,1)]
-
+# '3x224x224'
+model_alex=[(96,11),4,2, (256,5),2, (384,3),(384,3),(256,3),2, (1,5)]
+# '3x28x28'
 model_onn=[(64,3),(64,3),2,(64,3),(64,3),2,(64,3),(64,1),(64,1),(1,8)]
 
 # model_vgg11=[(64,3)] +[2]+ [(128,3)]  +[2]+ [(256,3)]*2 +[2]+ [(512,3)]*2 +[2]+ [(512,3)]*2 +[2,(4096,7), (4096,1), (1,1)]
@@ -278,8 +278,8 @@ def attack_exp(model, c0=3):
 
 # %% show
 
-def show(model, c0=3, lmbda=1e9):
-    param = comp_param(model, c0)[0]
+def show(model, c0=3, lmbda=1e9, bias=True):
+    param = comp_param(model, c0, bias)[0]
     data = (
         attack_adaptive(model, c0, lmbda)[0],
         # attack_adaptive_lb(model, c0)[0],
@@ -307,18 +307,17 @@ def test():
 
     show(model_lenet, c0, lmbda)
     show(model_alex, c0, lmbda)
-
-    # lmbda=1e8
     show(model_onn, c0, lmbda)
 
+    # lmbda=1e8
     show(model_vgg11, c0, lmbda)
     show(model_vgg13, c0, lmbda)
     show(model_vgg16, c0, lmbda)
     show(model_vgg19, c0, lmbda)
 
-    show(model_res18, c0, lmbda)
-    show(model_res34, c0, lmbda)
-    show(model_res50, c0, lmbda)
-    show(model_res101, c0, lmbda)
-    show(model_res152, c0, lmbda)
+    show(model_res18, c0, lmbda, False)
+    show(model_res34, c0, lmbda, False)
+    show(model_res50, c0, lmbda, False)
+    show(model_res101, c0, lmbda, False)
+    show(model_res152, c0, lmbda, False)
 
