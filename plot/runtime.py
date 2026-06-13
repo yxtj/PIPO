@@ -7,7 +7,7 @@ from plot.base import *
 # %% plot function
 
 def show_group_bar(data, names, ylabel, width=0.7,
-                   logscale=False, showvalue=False, hatch=False):
+                   logscale=False, showvalue=False, hatch=False, loc=None):
     if not isinstance(data, np.ndarray):
         data = np.array(data)
     n, m = data.shape
@@ -19,7 +19,7 @@ def show_group_bar(data, names, ylabel, width=0.7,
     x = np.arange(n)
     bc1 = plt.bar(x - wb/2, data[:, 0], wb, label='offline', hatch='///' if hatch else None)
     bc2 = plt.bar(x + wb/2, data[:, 1], wb, label='online', hatch='\\\\\\' if hatch else None)
-    plt.xticks(x, names, fontsize=fs+2)
+    plt.xticks(x, names, fontsize=fs)
     if showvalue:
         plt.bar_label(bc1, data[:, 0], fontsize=fs-2)
         plt.bar_label(bc2, data[:, 1], fontsize=fs-2)
@@ -27,8 +27,8 @@ def show_group_bar(data, names, ylabel, width=0.7,
         plt.yscale('log')
     # plt.legend(['offline', 'online'])
     # plt.legend()
-    plt.legend(borderpad=0.3, handletextpad=0.2, columnspacing=1, fontsize=fs)
-    plt.ylabel(ylabel, fontsize=fs+2)
+    plt.legend(borderpad=0.3, handletextpad=0.2, columnspacing=1, fontsize=fs-2, loc=loc)
+    plt.ylabel(ylabel, fontsize=fs)
     plt.tight_layout()
 
 
@@ -156,8 +156,12 @@ plt.ylim(0, 45)
 plt.xlim(-0.5, 1.5)
 
 show_group_bar(pool_time, pool_name, 'Execution time (s)', 0.7, showvalue=True)
-plt.ylim(None, 32)
 plt.xlim(-0.5, 1.5)
+plt.ylim(None, 32)
+
+show_group_bar(pool_time, pool_name, 'Execution time (s)', 0.7, True, True, loc='center right')
+plt.xlim(-0.5, 1.5)
+plt.ylim(None, 80)
 
 # communication cost
 
