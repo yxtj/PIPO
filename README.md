@@ -1,4 +1,8 @@
-# reference — Privacy-Preserving Inference Framework
+# PIPO
+
+An efficient privacy-preserving network network inference framework.
+
+PIPO is short for “Privacy-Preserving Inference with Plaintext Operations”
 
 A research framework for **client-server privacy-preserving inference (PPI)** that protects **both** the client's input data and the server's model parameters. The framework uses additive secret sharing and multiplicative blinding to ensure that:
 
@@ -94,59 +98,11 @@ Protocols and their privacy guarantees:
 
 ### Client privacy — additive secret sharing (`x → r, x-r`)
 
-| File | Function/Line | Role |
-|---|---|---|
-| `protocol/sshare.py:10-15` | `gen_add_share()` | Generates random additive mask `r` with zero-mean uniform distribution ±8 |
-| `protocol/ptobase.py:48-63` | `_gen_add_share_()` | Creates or reuses additive share for a given shape |
-| `protocol/scale.py:40-47` | `ProtocolClient.send_online()` | **Masking**: sends `data - r` to server (line 42) |
-| `protocol/scale.py:49-59` | `ProtocolClient.recv_online()` | **Unmasking**: adds cached `self.pre` to server response (line 54) |
-| `protocol/scale.py:21-23` | `ProtocolClient.setup()` | Generates `self.r` for this layer |
-| `protocol/scale.py:25-38` | `ProtocolClient.send_offline()` / `recv_offline()` | Sends `r` to server, caches result as `self.pre` |
-| `layer/base.py:16-47` | `LayerClient` | Wires `ProtocolClient` into the per-layer pipeline |
-| `layer/conv.py:11-13` | `ConvClient` | Inherits LayerClient which calls `self.protocol.send_online(xm)` → server sees only masked data |
-| `layer/fc.py:10-12` | `FcClient` | Same pattern |
-| `layer/relu.py:10-21` | `ReLUClient.online()` | **Local processing**: data never leaves client |
-| `layer/flatten.py:10-21` | `FlattenClient.online()` | **Local processing**: data never leaves client |
-| `layer/softmax.py:10-21` | `SoftmaxClient.online()` | **Local processing**: data never leaves client |
-
 ### Server privacy — multiplicative blinding + additive offset (`m`, `s`)
-
-| File | Function/Line | Role |
-|---|---|---|
-| `protocol/sshare.py:18-24` | `gen_mul_share()` | Generates positive random multiplier `m ∈ [ε, 16)` per output element (line 24) |
-| `protocol/scale.py:69-79` | `ProtocolServer.setup()` | Generates `s` (additive offset, line 78) and `m` (multiplicative scaling, line 79) |
-| `protocol/scale.py:110-118` | `ProtocolServer.send_offline()` | Blinds: `data *= self.m; data += self.s` (lines 112-113) — client never sees bare `W·r` |
-| `protocol/scale.py:135-146` | `ProtocolServer.send_online()` | Blinds: `data *= self.m; data -= self.s` (lines 140-141) — client never sees bare `W·(x-r)` |
-| `protocol/scale.py:98-108` | `ProtocolServer.recv_offline()` | Divides received mask by `mlast`: `data /= self.mlast` (line 104) |
-| `protocol/scale.py:120-133` | `ProtocolServer.recv_online()` | Divides received data by `mlast`: `data /= self.mlast` (line 128) |
-| `layer/base.py:76-81` | `LayerServer.run_layer_offline()` | Removes bias during offline computation — bias only applied online, mixed with `m` and `s` |
-| `layer/conv.py:21-31` | `ConvServer.offline()` | Runs `W·r` (no bias), result immediately blinded with `m`, `s` |
-| `layer/conv.py:33-45` | `ConvServer.online()` | Runs `W·(x-r)` (with bias), result immediately blinded with `m`, `s` |
-| `layer/fc.py:19-41` | `FcServer.offline()` / `online()` | Same pattern as ConvServer |
-| `layer/avgpool.py:21-43` | `AvgPoolServer` | Same pattern (linear operation, no learnable params, but maintains protocol chain) |
 
 ### Server privacy (extra) — shuffle and noise
 
-| File | Function/Line | Mechanism |
-|---|---|---|
-| `protocol/shuffle.py:74-97` | `ProtocolServer.setup()` | Generates random permutation `p = torch.randperm(n)` (line 94) |
-| `protocol/shuffle.py:127-132` | `ProtocolServer.shuffle_output()` | Permutes output: `data.ravel()[self.p].reshape(self.oshape)` (line 131) |
-| `protocol/shuffle.py:147-156` | `ProtocolServer.send_offline()` | Applies shuffle: `data = shuffle_output(data)` (line 150) |
-| `protocol/shuffle.py:175-188` | `ProtocolServer.send_online()` | Applies shuffle: `data = shuffle_output(data)` (line 182) |
-| `protocol/shuffle.py:120-125` | `ProtocolServer.deshuflle_input()` | Unshuffles incoming data using previous layer's permutation (line 124) |
-| `protocol/noise.py:51-68` | `ProtocolServer.send_online()` | Injects Gaussian noise before applying blinding: `data += N(0, σ²)` (line 64) |
-
 ### Both parties — efficiency and infrastructure
-
-| File | Function/Line | Role |
-|---|---|---|
-| `system/client.py:23-37` | `Client.offline()` | Runs all layers' offline prep in sequence (line 24-32) |
-| `system/client.py:34-37` | `Client.online()` | Runs all layers' online pass in sequence (line 34-36) |
-| `system/server.py:26-41` | `Server.offline()` | Runs all layers' offline prep in sequence (line 30-41) |
-| `system/server.py:43-48` | `Server.online()` | Runs all layers' online pass in sequence (line 43-48) |
-| `protocol/ptobase.py:106-124` | `ProBaseClient.basic_send/recv_offline()` | Optional HE encryption for offline data in transit |
-| `comm/he.py:21-50` | `send/recv_he_matrix()` | Per-ciphertext HE serialization for encrypted offline messages |
-| `protocol/plaintext.py` | All | No masking at all — benchmarking only, protects neither party |
 
 ### How the full protocol unwinds (scale protocol)
 
@@ -269,15 +225,3 @@ pip install torch torchvision Pyfhel pycryptodome scipy numpy opencv-python
 - `Pyfhel` — HE support (optional, only if `PIPO_USE_HE=1`)
 - `pycryptodome` — RSA encryption for Oblivious Transfer
 - `opencv-python` — used by OpenPose example for image preprocessing
-
-## Relationship to ppvas2
-
-This codebase is the **reference implementation** for the ppvas2 project (privacy-preserving video analytics v2). While this reference demonstrates the core secret-sharing protocol on **static image inference**, ppvas2 extends the same ideas to **video streams** with incremental processing:
-
-- Frame differencing to skip unchanged regions
-- Per-block extraction and masking (not full-frame)
-- Batching of per-layer blocks via pseudo-frames
-- Event-driven client loop with diff-propagation across layers
-- Multi-threaded server with block buffer / result buffer / scheduling
-
-The protocol (`scale` with additive + multiplicative blinding), layer classification (linear→server, non-linear→client), and two-phase execution pattern are identical.
