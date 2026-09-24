@@ -8,3 +8,8 @@ N Max-size-of-q Max-size-of-q Max-size-of-q
 8192 218 152 118
 16384 438 305 237
 32768 881 611 476
+
+HE.contextGen(scheme='CKKS', n=2**11, scale=2**20, qi_sizes=[20]*2)
+
+n=13
+524401
