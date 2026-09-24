@@ -1,19 +1,32 @@
 # PIPO
 
-An efficient privacy-preserving network network inference framework.
+**PIPO: Privacy-Preserving Convolutional Neural Network Inference with Plaintext Operations** (Zhou & Gao, ICDCS 2024)
 
-PIPO is short for “Privacy-Preserving Inference with Plaintext Operations”
+https://ieeexplore.ieee.org/abstract/document/10630913
 
-A research framework for **client-server privacy-preserving inference (PPI)** that protects **both** the client's input data and the server's model parameters. The framework uses additive secret sharing and multiplicative blinding to ensure that:
+This project is the mplementationof the paper, hosting the full protocol, model, and networking code. It demonstrates the core secret-sharing protocol, the offline/online phase split, and the client–server layer architecture.
+
+- [How it works](#how-it-works)
+- [Two-phase execution](#two-phase-execution)
+- [The scale protocol, step by step](#the-scale-protocol-step-by-step)
+- [Protocol variants & configuration](#protocol-variants--configuration)
+- [Example models](#example-models)
+- [Directory structure](#directory-structure)
+- [Layer classification](#layer-classification)
+- [Key design decisions](#key-design-decisions)
+- [Dependencies](#dependencies)
+- [Citation](#citation)
+
+## Overview
+
+PIPO is a research framework for **client–server privacy-preserving inference (PPI)**. It protects **both** the client's input data and the server's model parameters using additive secret sharing and multiplicative blinding:
 
 - **Client's data** `x` is never seen in plaintext by the server (additive masking `x → r, x-r`)
 - **Server's model weights** `W` cannot be reconstructed by the client (multiplicative blinding `m` + additive offset `s`)
 
-Linear operations (conv, fc, avg pool) happen on the server under additive masking; non-linear operations (ReLU, softmax, flatten) happen locally on the client. Most protocol complexity goes toward server privacy.
+Linear operations (conv, fc, avg pool) run on the server under additive masking; non-linear operations (ReLU, softmax, flatten) happen locally on the client. Most protocol complexity goes toward server privacy.
 
-This codebase serves as a **reference implementation** for the ppvas2 privacy-preserving video analytics project. It demonstrates the core secret-sharing protocol, the offline/online phase split, and the client-server layer architecture.
-
-## Core technique: dual-party privacy
+## How it works
 
 ### Client privacy: additive secret sharing
 
@@ -23,7 +36,7 @@ Each layer input `x` is additively masked as `x → (r, x-r)`. The server receiv
 W·(x - r) + W·r = W·x
 ```
 
-Key files: `protocol/sshare.py:gen_add_share()` (lines 10-15), `protocol/scale.py:ProtocolClient.send_online()` (line 42: `data - r`), `protocol/scale.py:ProtocolClient.recv_online()` (line 54: `data + pre`).
+Key files: `protocol/sshare.py:gen_add_share()`, `protocol/scale.py:ProtocolClient.send_online()` (`data - r`), `protocol/scale.py:ProtocolClient.recv_online()` (`data + pre`).
 
 ### Server privacy: multiplicative + additive blinding
 
@@ -35,78 +48,31 @@ online:   W·(x-r/m)·m - s
 combined: W·x·m
 ```
 
-The client always recovers an output scaled by the unknown `m` — never the true `W·x`. This prevents the client from learning `W` through the input-output relationship. For the `shuffle` protocol, an element-wise permutation `p` is also applied, breaking spatial correspondence entirely.
+The client always recovers an output scaled by the unknown `m` — never the true `W·x`. This prevents the client from learning `W` through the input–output relationship. For the `shuffle` protocol, an element-wise permutation `p` is also applied, breaking spatial correspondence entirely.
 
-Key files: `protocol/sshare.py:gen_mul_share()` (lines 18-24), `protocol/scale.py:ProtocolServer.setup()` (lines 78-79: generates `s`, `m`), `protocol/scale.py:ProtocolServer.send_offline()` (lines 112-113: `data *= m; data += s`).
-
-### Efficiency: two-phase execution
-
-The **offline phase** precomputes `W·r` for every layer before data arrives. The **online phase** then only needs to send `x - r` and unmask the result — one round trip per inference. The offline phase can also be encrypted with HE (`PIPO_USE_HE=1`) for protection against network eavesdroppers.
-
-Key files: `system/client.py:Client.offline()`, `system/server.py:Server.offline()`, `comm/he.py`.
-
-**Protocol flow for each linear layer:**
-
-1. **Offline (data-independent):** Client sends random mask `r` → Server computes `W·r` (without bias, via `run_layer_offline()`), applies `m`, `s` → Client caches `W·r·m + s`
-2. **Online (data-dependent):** Client sends `x - r` → Server computes `W·(x - r)` (with bias), blinds with `m`, `-s` → Client unmasks using cached value → recovers `W·x·m`
+Key files: `protocol/sshare.py:gen_mul_share()`, `protocol/scale.py:ProtocolServer.setup()` (generates `s`, `m`), `protocol/scale.py:ProtocolServer.send_offline()` (`data *= m; data += s`).
 
 ## Two-phase execution
 
 Every inference session has exactly two phases:
 
-| Phase | When | What happens |
-|---|---|---|
+| Phase       | When                           | What happens                                                                                                                        |
+| ----------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
 | **Offline** | Once, before data is available | Client generates random masks `R_i` per layer, sends to server; server runs the masks through each linear layer; results are cached |
-| **Online** | Per inference | Client sends masked input, server computes, client unmasks and applies local non-linear ops |
+| **Online**  | Per inference                  | Client sends masked input, server computes, client unmasks and applies local non-linear ops                                         |
 
-Both server and client must complete offline before online begins.
+Both server and client must complete offline before online begins. The **offline phase** precomputes `W·r` for every layer before data arrives; the **online phase** then only needs to send `x - r` and unmask the result — one round trip per inference. The offline phase can optionally be encrypted with HE (`PIPO_USE_HE=1`) for protection against network eavesdroppers.
 
-## Protocol selection (via env vars)
+The protocol flow of each linear layer:
 
-| Variable | Values | Default | Description |
-|---|---|---|---|
-| `PIPO_PROTOCOL` | `plaintext`, `scale`, `shuffle`, `noise` | `scale` | Security protocol variant |
-| `PIPO_USE_HE` | `0`, `1` | `0` | Enable homomorphic encryption in offline phase |
+1. **Offline (data-independent):** client sends random mask `r` → server computes `W·r` (without bias) and applies `m`, `s` → client caches `W·r·m + s`
+2. **Online (data-dependent):** client sends `x - r` → server computes `W·(x - r)` (with bias), blinds with `m`, `-s` → client unmasks using the cached value → recovers `W·x·m`
 
-```bash
-# Plaintext (no masking, benchmarking only)
-set PIPO_PROTOCOL=plaintext
+Key files: `system/client.py:Client.offline()`, `system/server.py:Server.offline()`, `comm/he.py`.
 
-# Default scale protocol (protects both client and server)
-set PIPO_PROTOCOL=scale
+## The scale protocol, step by step
 
-# Scale + element-wise shuffle (extra server privacy)
-set PIPO_PROTOCOL=shuffle
-
-# Scale + differential privacy noise (extra server privacy)
-set PIPO_PROTOCOL=noise
-
-# Enable HE in the offline phase (protects offline messages from eavesdroppers)
-set PIPO_USE_HE=1
-```
-
-Protocols and their privacy guarantees:
-
-| Protocol | Client privacy | Server privacy | Mechanism |
-|---|---|---|---|
-| `plaintext` | None | None | Direct data transfer, no masking |
-| `scale` (default) | ✅ Additive mask `r` | ✅ Multiplicative `m` + additive `s` | `x → x-r` on client; `data → data·m ± s` on server |
-| `shuffle` | ✅ Same as scale | ✅ Scale + element-wise permutation `p` | Server permutes output elements before sending, client cannot map values to positions |
-| `noise` | ✅ Same as scale | ✅ Scale + Gaussian DP noise | Server adds `N(0, σ²)` to output, prevents precise reconstruction via repeated queries |
-
-## Privacy attribution by component
-
-### Client privacy — additive secret sharing (`x → r, x-r`)
-
-### Server privacy — multiplicative blinding + additive offset (`m`, `s`)
-
-### Server privacy (extra) — shuffle and noise
-
-### Both parties — efficiency and infrastructure
-
-### How the full protocol unwinds (scale protocol)
-
-Step by step for a `Conv → ReLU → Linear` chain:
+A complete run for a `Conv → ReLU → Linear` chain:
 
 ```
 Offline:
@@ -133,19 +99,54 @@ Online (one inference):
 
 The client's final output is always `f(x)·m_last` — the server never reveals plaintext model output, and the client never reveals plaintext input. The multiplicative mask `m` propagates through all local layers (ReLU preserves sign, Flatten reshapes, Softmax is applied client-side).
 
+## Protocol variants & configuration
+
+Behavior is selected through two environment variables:
+
+| Variable        | Values                                   | Default | Description                                    |
+| --------------- | ---------------------------------------- | ------- | ---------------------------------------------- |
+| `PIPO_PROTOCOL` | `plaintext`, `scale`, `shuffle`, `noise` | `scale` | Security protocol variant                      |
+| `PIPO_USE_HE`   | `0`, `1`                                 | `0`     | Enable homomorphic encryption in offline phase |
+
+```bash
+# Plaintext (no masking, benchmarking only)
+set PIPO_PROTOCOL=plaintext
+
+# Default scale protocol (protects both client and server)
+set PIPO_PROTOCOL=scale
+
+# Scale + element-wise shuffle (extra server privacy)
+set PIPO_PROTOCOL=shuffle
+
+# Scale + differential privacy noise (extra server privacy)
+set PIPO_PROTOCOL=noise
+
+# Enable HE in the offline phase (protects offline messages from eavesdroppers)
+set PIPO_USE_HE=1
+```
+
+Privacy guarantees by variant:
+
+| Protocol          | Client privacy      | Server privacy                         | Mechanism                                                                              |
+| ----------------- | ------------------- | -------------------------------------- | -------------------------------------------------------------------------------------- |
+| `plaintext`       | None                | None                                   | Direct data transfer, no masking                                                       |
+| `scale` (default) | ✅ Additive mask `r` | ✅ Multiplicative `m` + additive `s`    | `x → x-r` on client; `data → data·m ± s` on server                                     |
+| `shuffle`         | ✅ Same as scale     | ✅ Scale + element-wise permutation `p` | Server permutes output elements before sending, client cannot map values to positions  |
+| `noise`           | ✅ Same as scale     | ✅ Scale + Gaussian DP noise            | Server adds `N(0, σ²)` to output, prevents precise reconstruction via repeated queries |
+
 ## Example models
 
-| Example | Model | Input shape | Skip connections |
-|---|---|---|---|
-| `example/resnet.py` | ResNet-20/32/44/56/110/152 on CIFAR-10/100 | `(3, 32, 32)` | Yes (Addition shortcuts via `te.SequentialShortcut`) |
-| `example/minionn.py` | MiniONN (small conv net for CIFAR) | `(3, 32, 32)` | No (`nn.Sequential`) |
-| `example/openpose.py` | OpenPose body/hand pose estimation | `(3, 368, 368)` | Yes (Jump + Concatenation) |
-| `example/poc.py` | Small custom models for prototyping | Variable | Yes (all shortcut types) |
+| Example               | Model                                      | Input shape     | Skip connections                                     |
+| --------------------- | ------------------------------------------ | --------------- | ---------------------------------------------------- |
+| `example/resnet.py`   | ResNet-20/32/44/56/110/152 on CIFAR-10/100 | `(3, 32, 32)`   | Yes (Addition shortcuts via `te.SequentialShortcut`) |
+| `example/minionn.py`  | MiniONN (small conv net for CIFAR)         | `(3, 32, 32)`   | No (`nn.Sequential`)                                 |
+| `example/openpose.py` | OpenPose body/hand pose estimation         | `(3, 368, 368)` | Yes (Jump + Concatenation)                           |
+| `example/poc.py`      | Small custom models for prototyping        | Variable        | Yes (all shortcut types)                             |
 
 ## Directory structure
 
 ```
-reference/
+PIPO/
 ├── example/           # Entry points (one per model)
 │   ├── poc.py         #   Proof-of-concept with small models
 │   ├── resnet.py      #   ResNet on CIFAR
@@ -201,12 +202,12 @@ reference/
 
 Layers are split by where computation happens and what the computation is:
 
-| Category | Layers | Location | Computation |
-|---|---|---|---|
-| **Remote, linear** | Conv2d, Linear, AvgPool2d, Identity | Server | `W·(x - r)` under additive mask |
-| **Remote, non-linear** | MaxPool2d | Server | Kronecker-product expanded mask for non-overlapping pooling |
-| **Client, non-linear** | ReLU, Softmax, Flatten | Client | Applied directly on unblinded values |
-| **Shortcut** | Addition, Concatenation, Jump | Server | Buffered feature-merging via te.SequentialShortcut |
+| Category               | Layers                              | Location | Computation                                                 |
+| ---------------------- | ----------------------------------- | -------- | ----------------------------------------------------------- |
+| **Remote, linear**     | Conv2d, Linear, AvgPool2d, Identity | Server   | `W·(x - r)` under additive mask                             |
+| **Remote, non-linear** | MaxPool2d                           | Server   | Kronecker-product expanded mask for non-overlapping pooling |
+| **Client, non-linear** | ReLU, Softmax, Flatten              | Client   | Applied directly on unblinded values                        |
+| **Shortcut**           | Addition, Concatenation, Jump       | Server   | Buffered feature-merging via te.SequentialShortcut          |
 
 ## Key design decisions
 
@@ -225,3 +226,21 @@ pip install torch torchvision Pyfhel pycryptodome scipy numpy opencv-python
 - `Pyfhel` — HE support (optional, only if `PIPO_USE_HE=1`)
 - `pycryptodome` — RSA encryption for Oblivious Transfer
 - `opencv-python` — used by OpenPose example for image preprocessing
+
+## Citation
+
+If you use this code in your research, please cite:
+
+[Zhou2024PIPO]
+Zhou, T. & Gao, L. (2024). PIPO: Privacy-Preserving Convolutional Neural Network Inference with Plaintext Operations. In *2024 IEEE 44th International Conference on Distributed Computing Systems (ICDCS)* (pp. 1365–1376). IEEE.
+
+```bibtex
+@inproceedings{zhou2024pipo,
+  title={PIPO: Privacy-Preserving Convolutional Neural Network Inference with Plaintext Operations},
+  author={Zhou, Tian and Gao, Lixin},
+  booktitle={2024 IEEE 44th International Conference on Distributed Computing Systems (ICDCS)},
+  pages={1365--1376},
+  year={2024},
+  organization={IEEE}
+}
+```
