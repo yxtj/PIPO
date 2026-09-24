@@ -1,0 +1,11 @@
+name,time-offline,time-online,comm-offline,comm-online,accuracy
+Local,0,0.002,0,0,76.4
+#Scaling (PIPO),0,0.043,0,0.002,76.4
+Scale+Shuffle (PIPO),0,0.002,0,0,76.4
+GC (Delphi),46.9,15.8,5.3,0.62,67.8
+Beaver (Delphi),1.818,0.009,0.046,0.002,65.7
+
+#act_acc = np.array([76.4, 76.4, 67.8, 65.7])
+#act_time= [(0, 0.002), (0, 0.002), (46.9, 15.8), (1.818, 0.009)]
+#act_comm= [(0, 0), (0, 0), (5.3, 0.62), (0.046, 0.002)]
+#act_name = ['Local', 'Scale+Shuffle\n(PIPO)', 'GC\n(Delphi)', 'Beaver\n(Delphi)']

@@ -1,0 +1,11 @@
+# resnet
+name,time-offline,time-online,comm-offline,comm-online,accuracy
+PIPO,143.8,0.21,1761,3.0,76.4
+Delphi,95.3,4.7,1732,78,65.7
+Delphi (ReLU),224.2,17.7,8651,280,67.8
+Gazelle,159.3,82.2,8341,574,67.8
+
+#acc_resnet = [76.4, 65.7, 67.8, 67.8]
+#time_resnet = [(143.8, 0.21), (95.3, 4.7), (224.2, 17.7), (159.3, 82.2)]
+#comm_resnet = [(1761, 3.0), (1732, 78), (8651, 280), (8341, 574)]
+#legend = ['ScaleNet', 'Delphi', 'Delphi (ReLU)', 'Gazelle']

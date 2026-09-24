@@ -1,0 +1,12 @@
+name,time-offline,time-online,comm-offline,comm-online,accuracy
+Max-Pooling,24.1,0.00163,1908,1.82,90.3
+Avg-Pooling,21.8,0.00162,1651,1.57,86.3
+
+#Max-Pooling,24.1,16.3,1908,1.82,90.3
+#Avg-Pooling,21.8,16.2,1651,1.57,86.3
+
+
+#pool_acc = [90.3, 86.3]
+#pool_time = [(24.1, 0.00163), (21.8, 0.00162)]
+#pool_comm = [(1908, 1.82), (1651, 1.57)]
+#pool_name = ['Max-Pooling', 'Avg-Pooling']

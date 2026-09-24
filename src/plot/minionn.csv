@@ -1,0 +1,11 @@
+# minionn
+name,time-offline,time-online,comm-offline,comm-online,accuracy
+PIPO,73.1,0.02,477,1.8,90.3
+Delphi,41.5,0.41,171,7,82.7
+Delphi (ReLU),128.4,9.0,4747,164,86.3
+Gazelle,88.6,48.8,4604,279,86.3
+
+#acc_minionn = [90.3, 82.7, 86.3, 86.3]
+#time_minionn = [(73.1, 0.02), (41.5, 0.41), (128.4, 9.0), (88.6, 48.8)]
+#comm_minionn = [(477, 1.8), (171, 7), (4747, 164), (4604, 279)]
+#legend = ['FaSeNet', 'Delphi', 'Delphi (ReLU)', 'Gazelle']

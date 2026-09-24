@@ -1,0 +1,19 @@
+# PIPO default configuration.
+#
+# Shared by the client and the server: `[common]` holds the settings both
+# roles need, `[client]`/`[server]` hold role-specific ones. Pass a different
+# file with `--config <path>`. Command-line arguments override the values here.
+
+[common]
+host = "127.0.0.1"
+port = 8100
+device = "cpu"
+model = "poc-1"           # model name, resolved through src/models/registry.py
+n = 1                     # number of online inference rounds
+seed = 0                  # RNG seed for random weights (shared client + server)
+use_he = false            # use HE (Pyfhel CKKS) in the offline phase
+protocol = "scale"        # plaintext | scale | shuffle | noise
+wfile = ""                # weights file (state dict); empty = random/default
+
+[client]
+verify = false            # compare the system result against local inference
