@@ -1,4 +1,4 @@
-from src.models import openpose
+from models import openpose
 import torch
 import sys
 import time

@@ -1,6 +1,6 @@
 """Model registry: model name -> (inshape, builder).
 
-Aggregates every model definition under ``src/models`` behind one name space.
+Aggregates every model definition under ``models`` behind one name space.
 ``load(name, ...)`` builds a fresh model instance; ``torch.manual_seed(seed)``
 is called first so that the client and the server can share identical random
 weights for randomly-initialized  Pretrained weights can be applied
@@ -10,7 +10,7 @@ defaults when ``wfile`` is empty.
 
 import torch
 
-from src.models import minionn, openpose, poc, resnet, resnet_cifar, vgg
+from models import minionn, openpose, poc, resnet, resnet_cifar, vgg
 
 
 def _uniform_init(model, low: float = -1.0, high: float = 1.0):

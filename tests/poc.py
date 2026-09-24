@@ -11,7 +11,7 @@ from session import PROJECT_ROOT, run_compare, show_report, check_threshold
 
 
 def main():
-    from src.models import poc as poc_map
+    from models import poc as poc_map
 
     protocol = 'scale'
     only = None

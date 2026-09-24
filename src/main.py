@@ -43,7 +43,7 @@ def main():
     set_config(cfg)
 
     # late imports so that the protocol variant is chosen from the final config
-    from src.models import registry
+    from models import registry
 
     inshape, model = registry.load(common.model, seed=common.seed, wfile=common.wfile or None, device=common.device)
     print("Model loaded: {} on {}".format(common.model, common.device))

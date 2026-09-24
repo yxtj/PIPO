@@ -120,11 +120,11 @@ python -m src.main server --model minionn --wfile pretrained/minionn.pt --protoc
 python -m src.main client --model minionn --protocol scale --verify --n 2
 ```
 
-Model training lives under `src/train/`:
+Model training lives under `train/` (run from the repo root):
 
 ```bash
-python -m src.train.resnet data_dir chkpt_dir [epochs] [dump_interval] [...] [model_version]
-python -m src.train.minionn data_dir chkpt_dir
+python train/resnet.py data_dir chkpt_dir [epochs] [dump_interval] [bs] [lr] [device] [model_version]
+python train/minionn.py data_dir chkpt_dir [epochs] [batch_size] [dump_interval] [lr] [device]
 ```
 
 ## Tests
@@ -165,7 +165,7 @@ Behavior is selected through `config.toml` (`[common]` section) or CLI flags:
 | ---------------------- | ---------- | ---------------------------------------- | ------- | ---------------------------------------------- |
 | `protocol`             | `--protocol` | `plaintext`, `scale`, `shuffle`, `noise` | `scale` | Security protocol variant                      |
 | `use_he`               | `--use-he` | `true`, `false`                          | `false` | Enable HE in the offline phase                 |
-| `model`                | `--model`  | any name from `src/models/registry.py`   | `poc-1` | The model both roles must use identically      |
+| `model`                | `--model`  | any name from `models/registry.py`       | `poc-1` | The model both roles must use identically      |
 | `wfile`                | `--wfile`  | path                                     | (empty) | Pretrained weights file (state dict)           |
 | `host`/`port`          | `--host`/`--port` | -                                 | `127.0.0.1:8100` | Connection endpoints                  |
 | `n`                    | `--n`      | int                                      | `1`     | Number of online inference rounds              |
@@ -203,8 +203,8 @@ python -m src.main server --use-he
 
 ## Example models
 
-Models are resolved by name through `src/models/registry.py`; every entry
-names a builder under `src/models/`:
+Models are resolved by name through `models/registry.py`; every entry
+names a builder under `models/`:
 
 | Registry name                      | Model                                      | Input shape     | Skip connections                              |
 | ---------------------------------- | ------------------------------------------ | --------------- | --------------------------------------------- |
@@ -240,6 +240,20 @@ model = DagModel(
 ```
 PIPO/
 ├── config.toml         # Default configuration (shared by client and server)
+├── models/             # Neural-network model definitions
+│   ├── registry.py     #   name -> (inshape, builder)
+│   ├── resnet.py       #   ResNet builder (ImageNet + CIFAR)
+│   ├── minionn.py      #   MiniONN builder
+│   ├── openpose.py     #   OpenPose builder
+│   ├── op_impl.py      #   OpenPose body/hand model internals
+│   ├── vgg.py          #   VGG builder
+│   └── poc.py          #   Small POC models map
+├── train/              # Neural-network training code
+│   ├── resnet.py       #   ResNet-CIFAR training loop
+│   ├── minionn.py      #   MiniONN training loop
+│   └── util.py         #   loader / train / checkpoint helpers
+├── security/           # Standalone model-security analysis (attacks, bounds)
+├── poc/                # Protocol-probing experiments (DP noise)
 ├── tests/              # Result-comparison tests (system vs pure-client local result)
 │   ├── session.py      #   subprocess server + in-process client + diff metrics
 │   ├── poc.py          #   all poc-* models
@@ -249,18 +263,6 @@ PIPO/
 │   └── run_all.py      #   runs all of the above
 ├── src/
 │   ├── main.py         # The single entry point (server|client)
-│   ├── models/         # Neural-network model definitions
-│   │   ├── registry.py #   name -> (inshape, builder)
-│   │   ├── resnet.py   #   ResNet builder (ImageNet + CIFAR)
-│   │   ├── minionn.py  #   MiniONN builder
-│   │   ├── openpose.py #   OpenPose builder
-│   │   ├── op_impl.py  #   OpenPose body/hand model internals
-│   │   ├── vgg.py      #   VGG builder
-│   │   └── poc.py      #   Small POC models map
-│   ├── train/          # Neural-network training code
-│   │   ├── resnet.py   #   ResNet-CIFAR training loop
-│   │   ├── minionn.py  #   MiniONN training loop
-│   │   └── util.py     #   loader / train / checkpoint helpers
 │   ├── model/          # Model graph infrastructure
 │   │   └── dag_model.py#   DagModel (+AddOp/ConcatOp/JumpOp Sh aps)
 │   ├── common/         # Shared config / model IR helpers
@@ -297,8 +299,6 @@ PIPO/
 │   │   `-- noise.py    #   Scale + differential privacy noise
 │   ├── comm/           # Network communication (raw TCP)
 │   ├── heutil/         # Homomorphic-encryption helpers (Pyfhel)
-│   ├── security/       # Security-evaluation scripts (permutation bounds etc.)
-│   ├── poc/            # Protocol-probing experiments (DP noise)
 │   ├── tests/          # Unit/integration tests
 │   └── plot/           # Paper-figure generators (CSV-based)
 ├── pretrained/         # Pretrained weights (minionn, resnet, openpose)

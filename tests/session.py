@@ -21,7 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import torch
 
-from src.models import registry
+from models import registry
 
 
 def run_compare(model_name, protocol='scale', n=1, seed=0, wfile=None, device='cpu'):

@@ -3,8 +3,8 @@ import torch.nn as nn
 import sys
 import re
 
-import src.models.resnet as resnet
-import src.train.util as util
+import models.resnet as resnet
+import train.util as util
 
 
 if __name__ == '__main__':
@@ -14,7 +14,7 @@ if __name__ == '__main__':
         print("  default epochs: 100, dump_interval: 10, bs: 512, lr: 0.001, device: cuda, model_version: 32-3")
         print("  model_version: <depth>-<version>[d], where depth is 20, 32, 44, 56, 110, 156; version is 1, 2, 3, 4; 'd' indicates direct/residual")
         sys.exit(1)
-    data_dir = argv[0] # 'E:/Data/CIFAR100'
+    data_dir = argv[0] # 'data/CIFAR100'
     chkpt_dir = argv[1] # 'pretrained/'
     epochs = int(argv[2]) if len(argv) > 2 else 100
     dump_interval = int(argv[3]) if len(argv) > 3 else 10

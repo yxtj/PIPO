@@ -6,8 +6,10 @@ import torch.nn.functional as F
 import numpy as np
 import copy
 
-import src.train.util
-import src.models.minionn
+import train as ml
+import train.util
+import models as model
+import models.minionn
 # import system.util
 
 # %% util functions

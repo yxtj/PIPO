@@ -6,7 +6,7 @@ import numpy as np
 from src.model.dag_model import AddOp, ConcatOp, DagModel, JumpOp
 
 
-def comp_out_shape(lyr, inshape, idx=None, shapes=None, src=(idx,)):
+def comp_out_shape(lyr, inshape, idx=None, shapes=None, src=()):
     if isinstance(lyr, (nn.Conv2d, nn.MaxPool2d, nn.AvgPool2d)):
         pad = (lyr.padding, lyr.padding) if isinstance(lyr.padding, int) else lyr.padding
         ks = (lyr.kernel_size, lyr.kernel_size) if isinstance(lyr.kernel_size, int) else lyr.kernel_size

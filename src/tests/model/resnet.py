@@ -1,10 +1,10 @@
 import torch
-import src.models.resnet
+import models.resnet
 from src.system.util import compute_shape
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-model = src.models.resnet.build(50).to(device)
+model = models.resnet.build(50).to(device)
 inshape =(3, 224, 224)
 # inp = torch.randn(1, 3, 224, 224).to(device)
 

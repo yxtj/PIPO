@@ -2,15 +2,15 @@ import torch
 import torch.nn as nn
 import sys
 
-import src.models.minionn as minionn
-import src.train.util as util
+import models.minionn as minionn
+import train.util as util
 
 if __name__ == '__main__':
     argv = sys.argv[1:]
     if len(argv) == 0:
         print("Usage: python minionn.py data_dir chkpt_dir epochs batch_size dump_interval lr device")
         sys.exit(1)
-    data_dir = argv[0] # 'E:/Data/CIFAR10'
+    data_dir = argv[0] # 'data/CIFAR10'
     chkpt_dir = argv[1] # 'pretrained/'
     epochs = int(argv[2]) if len(argv) > 2 else 100
     batch_size = int(argv[3]) if len(argv) > 3 else 512
