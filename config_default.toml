@@ -1,0 +1,54 @@
+# PIPO default configuration -- full parameter reference.
+#
+# Every configurable parameter, with the built-in default taken from the
+# dataclasses in src/common/config.py. All of them are optional: a config file
+# only needs to list the keys it overrides (see config.toml for the minimal
+# example, which is what src/main.py loads by default).
+#
+# This file is a reference, not a fallback: src/common/config.py still points
+# DEFAULT_CONFIG_FILE at config.toml. Use it explicitly with
+#   python -m src.main server --config config_default.toml
+#   python -m src.main client --config config_default.toml --verify
+#
+# Command-line flags override anything set here: --host --port --device
+# --model --n --seed --wfile --protocol --use-he --verify.
+
+[common]
+# Address the client dials and the server binds.
+host = "127.0.0.1"
+# TCP port for the client <-> server socket.
+port = 8100
+# Torch device for local inference, e.g. "cpu", "cuda", "cuda:0".
+device = "cpu"
+# Model name, resolved through models/registry.py (e.g. "poc-1", "minionn",
+# plus the resnet / vgg variants).
+model = "poc-1"
+# Number of online inference rounds per run.
+n = 1
+# RNG seed for randomly initialised weights. The server and the client build
+# the same model, so they must agree -- otherwise --verify compares against a
+# different set of weights.
+seed = 0
+# Use homomorphic encryption (Pyfhel CKKS) in the offline phase. Requires
+# Pyfhel to be installed; the CKKS context is hard-coded in src/main.py
+# (n=2**13, scale=2**30, qi_sizes=[30]*5).
+use_he = false
+# Inference protocol variant: plaintext | scale | shuffle | noise
+#   plaintext - no masking at all; correctness baseline only
+#   scale     - secret sharing + multiplicative blinding (PIPO, ICDCS 2024)
+#   shuffle   - masking plus a random shuffling of the feature map
+#   noise     - masking plus Gaussian DP noise
+# NOTE: "noise" is not wired up yet -- it requires a noise_sigma parameter,
+# src/layer/base.py never passes one, and src/protocol/noise.py asserts that it
+# is present, so selecting it fails at the first layer setup.
+protocol = "scale"
+# Path to a PyTorch state_dict of model weights; empty = registry default /
+# random weights.
+wfile = ""
+
+[client]
+# Compare the system result against local plaintext inference after the run.
+verify = false
+
+[server]
+# No server-specific settings yet; placeholder for future options.
