@@ -85,7 +85,9 @@ class ProtocolServer(ProBaseServer):
         assert p is None or isinstance(p, int) or p.shape == ishape
         mlast = last.m if last is not None else 1
         self.mlast = mlast
-        if last is None:
+        if last is None or isinstance(last.p, int):
+            # no pending permutation to invert: first layer, or the previous
+            # layer applies none (local layers / pooling propagate p = 1)
             self.rplast = 1
         else:
             self.rplast = torch.argsort(last.p.ravel()).reshape(self.ishape)
@@ -95,7 +97,9 @@ class ProtocolServer(ProBaseServer):
             n = np.prod(self.oshape)
             self.p = torch.randperm(n).reshape(self.oshape) # shuffle matrix
         else:
-            self.p = 1
+            # honor the given permutation: int 1 = no shuffle (local layers,
+            # pooling), or a propagated pending permutation tensor
+            self.p = p
         # self.rp = torch.argsort(self.p.ravel()).reshape(self.ishape) # unshuffle matrix
     
     def setup_local(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None, 
@@ -105,7 +109,11 @@ class ProtocolServer(ProBaseServer):
         else:
             m = last.m if last is not None else 1
         s = 0
-        p = 1
+        # a local layer applies no new shuffle, but the permutation from the
+        # last shuffled layer persists in the client-held tensor (elementwise
+        # ops commute with permutations) — propagate it so the next layer's
+        # rplast inverts the right permutation
+        p = last.p if last is not None else 1
         self.setup(ishape, oshape, last, s, m, p)
 
     def gen_mpooling(self, stride_shape: tuple) -> ProBaseServer:
