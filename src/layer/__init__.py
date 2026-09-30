@@ -5,6 +5,7 @@ from .conv import *
 from .fc import *
 from .identity import *
 from .avgpool import *
+from .batchnorm import *
 
 # remote layers (non-linear)
 from .maxpool import *

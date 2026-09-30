@@ -49,6 +49,9 @@ def make_client_model(socket, model, inshape, he):
         elif isinstance(lyr, nn.Linear):
             layers.append(layer.FcClient(socket, shapes[i], shapes[i+1], he, device))
             linears.append(i)
+        elif isinstance(lyr, (nn.BatchNorm1d, nn.BatchNorm2d)):
+            layers.append(layer.BnClient(socket, shapes[i], shapes[i+1], he, device))
+            linears.append(i)
         elif isinstance(lyr, nn.ReLU):
             layers.append(layer.ReLUClient(socket, shapes[i], shapes[i+1], he, device))
             locals.append(i)
@@ -104,6 +107,9 @@ def make_server_model(socket, model, inshape):
             linears.append(i)
         elif isinstance(lyr, nn.Linear):
             layers.append(layer.FcServer(socket, shapes[i], shapes[i+1], lyr, device))
+            linears.append(i)
+        elif isinstance(lyr, (nn.BatchNorm1d, nn.BatchNorm2d)):
+            layers.append(layer.BnServer(socket, shapes[i], shapes[i+1], lyr, device))
             linears.append(i)
         elif isinstance(lyr, nn.ReLU):
             layers.append(layer.ReLUServer(socket, shapes[i], shapes[i+1], lyr, device))

@@ -1,7 +1,25 @@
+import torch
 import torch.nn as nn
 from src.model.dag_model import AddOp, ConcatOp, DagModel, JumpOp
 
 map = {}
+
+
+def _fill_running_stats(model: nn.Module) -> nn.Module:
+    """Give BatchNorm buffers non-trivial (deterministic) values.
+
+    The registry re-initializes parameters with a shared seed, but buffers
+    (running_mean / running_var) keep their 0/1 defaults; left alone, the
+    mean/var normalization path would go untested. Filling them here must be
+    RNG-free: the client and the server import this module in separate
+    processes, so only deterministic values stay identical on both sides.
+    """
+    for m in model.modules():
+        if isinstance(m, (nn.BatchNorm1d, nn.BatchNorm2d)):
+            with torch.no_grad():
+                m.running_mean.copy_(torch.linspace(-0.5, 0.5, m.num_features))
+                m.running_var.copy_(torch.linspace(0.5, 2.0, m.num_features))
+    return model
 
 # Model 0 linear:
 # Shape: 6 -> 2
@@ -196,3 +214,33 @@ Poc6Model = DagModel(
     nn.Linear(640, 10),
 )
 map["6"] = (Poc6Inshape, Poc6Model)
+
+# Model 7:
+# Shape: 1x10x10 -conv-> 5x8x8 -bn-> -relu-> -conv-> 5x8x8 -bn-> -relu-> 320 -> 10
+
+Poc7Inshape = (1, 10, 10)
+Poc7Model = nn.Sequential(
+    nn.Conv2d(1, 5, 3),
+    nn.BatchNorm2d(5),
+    nn.ReLU(),
+    nn.Conv2d(5, 5, 3, 1, 1),
+    nn.BatchNorm2d(5),
+    nn.ReLU(),
+    nn.Flatten(),
+    nn.Linear(320, 10),
+)
+_fill_running_stats(Poc7Model)
+map["7"] = (Poc7Inshape, Poc7Model)
+
+# Model 8:
+# Shape: 6 -fc-> 8 -bn-> -relu-> 2
+
+Poc8Inshape = (6,)
+Poc8Model = nn.Sequential(
+    nn.Linear(6, 8),
+    nn.BatchNorm1d(8),
+    nn.ReLU(),
+    nn.Linear(8, 2),
+)
+_fill_running_stats(Poc8Model)
+map["8"] = (Poc8Inshape, Poc8Model)

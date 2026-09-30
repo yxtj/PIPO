@@ -3,7 +3,8 @@
 `example/` scripts) and run the client in this process, then compare the
 system result with the plaintext local result.
 
-Under every protocol the last non-local layer's multiplicative mask is 1, so
+Under every protocol the last non-local layer's multiplicative mask is 1
+(and, for the shuffle protocol, its permutation is the identity), so
 the protocol result is directly comparable with `model(x)`; the difference
 measures the protocol's numerical error.
 """

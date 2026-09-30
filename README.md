@@ -25,7 +25,7 @@ PIPO is a research framework for **client–server privacy-preserving inference 
 - **Client's data** `x` is never seen in plaintext by the server (additive masking `x → r, x-r`)
 - **Server's model weights** `W` cannot be reconstructed by the client (multiplicative blinding `m` + additive offset `s`)
 
-Linear operations (conv, fc, avg pool) run on the server under additive masking; non-linear operations (ReLU, softmax, flatten) happen locally on the client. Most protocol complexity goes toward server privacy.
+Linear operations (conv, fc, avg pool, batchnorm) run on the server under additive masking; non-linear operations (ReLU, softmax, flatten) happen locally on the client. Most protocol complexity goes toward server privacy.
 
 ## How it works
 
@@ -311,7 +311,7 @@ Layers are split by where computation happens and what the computation is:
 
 | Category               | Layers                              | Location | Computation                                                 |
 | ---------------------- | ----------------------------------- | -------- | ----------------------------------------------------------- |
-| **Remote, linear**     | Conv2d, Linear, AvgPool2d, Identity | Server   | `W·(x - r)` under additive mask                             |
+| **Remote, linear**     | Conv2d, Linear, AvgPool2d, Identity, BatchNorm1d/2d | Server   | `W·(x - r)` under additive mask                             |
 | **Remote, non-linear** | MaxPool2d                           | Server   | Kronecker-product expanded mask for non-overlapping pooling |
 | **Client, non-linear** | ReLU, Softmax, Flatten              | Client   | Applied directly on unblinded values                        |
 | **Shortcut**           | Addition, Concatenation, Jump       | Server   | Buffered feature-merging driven by the `DagModel` source graph |
