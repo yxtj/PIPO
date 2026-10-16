@@ -55,6 +55,15 @@ def make_client_model(socket, model, inshape, he):
         elif isinstance(lyr, nn.ReLU):
             layers.append(layer.ReLUClient(socket, shapes[i], shapes[i+1], he, device))
             locals.append(i)
+        elif isinstance(lyr, nn.Sigmoid):
+            layers.append(layer.SigmoidClient(socket, shapes[i], shapes[i+1], he, device, lyr))
+            locals.append(i)
+        elif isinstance(lyr, nn.LeakyReLU):
+            layers.append(layer.LeakyReLUClient(socket, shapes[i], shapes[i+1], he, device, lyr))
+            locals.append(i)
+        elif isinstance(lyr, nn.GELU):
+            layers.append(layer.GELUClient(socket, shapes[i], shapes[i+1], he, device, lyr))
+            locals.append(i)
         elif isinstance(lyr, nn.MaxPool2d):
             layers.append(layer.MaxPoolClient(socket, shapes[i], shapes[i+1], he, lyr, device))
         elif isinstance(lyr, nn.AvgPool2d):
@@ -114,6 +123,15 @@ def make_server_model(socket, model, inshape):
         elif isinstance(lyr, nn.ReLU):
             layers.append(layer.ReLUServer(socket, shapes[i], shapes[i+1], lyr, device))
             locals.append(i)
+        elif isinstance(lyr, nn.Sigmoid):
+            layers.append(layer.SigmoidServer(socket, shapes[i], shapes[i+1], lyr, device))
+            locals.append(i)
+        elif isinstance(lyr, nn.LeakyReLU):
+            layers.append(layer.LeakyReLUServer(socket, shapes[i], shapes[i+1], lyr, device))
+            locals.append(i)
+        elif isinstance(lyr, nn.GELU):
+            layers.append(layer.GELUServer(socket, shapes[i], shapes[i+1], lyr, device))
+            locals.append(i)
         elif isinstance(lyr, nn.MaxPool2d):
             layers.append(layer.MaxPoolServer(socket, shapes[i], shapes[i+1], lyr, device))
         elif isinstance(lyr, nn.AvgPool2d):
@@ -169,7 +187,10 @@ def analyze_stat(layers, n):
     for i, lyr in enumerate(layers):
         print("  Layer {} {}: {}".format(i, lyr.__class__.__name__, lyr.stat))
         s_total += lyr.stat
-        if isinstance(lyr, (layer.ReLUServer, layer.ReLUClient)):
+        if isinstance(lyr, (layer.ReLUServer, layer.ReLUClient,
+                            layer.SigmoidServer, layer.SigmoidClient,
+                            layer.LeakyReLUServer, layer.LeakyReLUClient,
+                            layer.GELUServer, layer.GELUClient)):
             s_relu += lyr.stat
         elif isinstance(lyr, (layer.MaxPoolServer, layer.MaxPoolClient,
                               layer.AvgPoolServer, layer.AvgPoolClient)):

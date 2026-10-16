@@ -13,7 +13,7 @@ SERVER_OPS = (nn.Conv2d, nn.Linear, nn.AvgPool2d, nn.Identity, nn.BatchNorm2d, n
 
 #: Modules that preserve their input shape (elementwise / normalization / identity.
 #: ``nn.Softmax`` is included for the PIPO plaintext head layer.
-_IDENTITY_SHAPE_OPS = (nn.ReLU, nn.BatchNorm1d, nn.BatchNorm2d, nn.Identity, nn.Dropout, nn.Dropout2d, nn.Softmax)
+_IDENTITY_SHAPE_OPS = (nn.ReLU, nn.Sigmoid, nn.LeakyReLU, nn.GELU, nn.BatchNorm1d, nn.BatchNorm2d, nn.Identity, nn.Softmax)
 
 
 def _ext_params(module: nn.Module) -> dict:

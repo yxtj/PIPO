@@ -13,6 +13,9 @@ from .shortcut import *
 
 # local layers (secure)
 from .relu import *
+from .sigmoid import *
+from .leakyrelu import *
+from .gelu import *
 from .flatten import *
 
 # local layers (non-encrypted at output)

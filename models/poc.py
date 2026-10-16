@@ -244,3 +244,27 @@ Poc8Model = nn.Sequential(
 )
 _fill_running_stats(Poc8Model)
 map["8"] = (Poc8Inshape, Poc8Model)
+# Model 9: non-ReLU activations (sigmoid / leakyrelu / gelu)
+# Shape: 6 -> 5 -> 2
+
+Poc9Inshape = (6,)
+Poc9Model_sig = nn.Sequential(
+    nn.Linear(6, 5),
+    nn.Sigmoid(),
+    nn.Linear(5, 2),
+)
+map["9-sigmoid"] = (Poc9Inshape, Poc9Model_sig)
+
+Poc9Model_lrelu = nn.Sequential(
+    nn.Linear(6, 5),
+    nn.LeakyReLU(0.2),
+    nn.Linear(5, 2),
+)
+map["9-leakyrelu"] = (Poc9Inshape, Poc9Model_lrelu)
+
+Poc9Model_gelu = nn.Sequential(
+    nn.Linear(6, 5),
+    nn.GELU(),
+    nn.Linear(5, 2),
+)
+map["9-gelu"] = (Poc9Inshape, Poc9Model_gelu)
