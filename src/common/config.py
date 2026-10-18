@@ -23,6 +23,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG_FILE = PROJECT_ROOT / "config.toml"
 
 
+
 @dataclass
 class CommonConfig:
     host: str = "127.0.0.1"
@@ -33,7 +34,7 @@ class CommonConfig:
     seed: int = 0
     # whether to use HE (Pyfhel) in the offline phase
     use_he: bool = False
-    # protocol variant: plaintext, scale, shuffle, noise
+    # protocol variant: plaintext, scale, shuffle, scaleshuffle, noise
     protocol: str = "scale"
     # weights file (state dict); empty = registry default / random weights
     wfile: str = ""

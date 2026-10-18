@@ -9,8 +9,6 @@ import sys
 
 from src.common.config import apply_args, load_config, set_config
 
-_AVAILABLE_PROTOCOL = ("plaintext", "scale", "shuffle", "noise")
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="pipo", description="PIPO privacy-preserving inference")
@@ -39,7 +37,6 @@ def main():
     mapping["client.verify"] = "verify"
     cfg = apply_args(cfg, args, mapping)
     common = cfg.common
-    assert common.protocol in _AVAILABLE_PROTOCOL, f"Invalid protocol: {common.protocol}. Available: {_AVAILABLE_PROTOCOL}"
     set_config(cfg)
 
     # late imports so that the protocol variant is chosen from the final config

@@ -34,7 +34,7 @@ One entry point serves both roles; `config.toml` + CLI flags (flags win) pick th
 ## Config & protocol dispatch quirk
 
 - `src/common/config.py` loads `config.toml` and applies CLI overrides; the effective config must be committed via `set_config()` before dependent imports.
-- `src/protocol/__init__.py` **dynamically imports the selected protocol (`plaintext|scale|shuffle|noise`) at import time from the config** — never import `src.protocol.scale` etc. directly; adding a protocol means also updating `AVAILABLE_PROTOCOL` and `src/main.py`'s `_AVAILABLE_PROTOCOL`.
+- `src/protocol/__init__.py` **dynamically imports the selected protocol at import time from the config** — never import `src.protocol.scale` etc. directly; adding a protocol means also updating `AVAILABLE_PROTOCOLS`.
 - Pyfhel (HE) is imported lazily; `src/main.py` hard-codes the CKKS context (`n=2**13, scale=2**30, qi_sizes=[30]*5`).
 
 ## Tests
