@@ -55,16 +55,8 @@ class MaxPoolServer(LayerServer):
         self.protocol_pool = ProtocolServer(self.socket, self.stat, self.he, self.device)
     
     def setup(self, last_lyr: LayerServer, m: Union[torch.Tensor, float, int]=None, **kwargs) -> None:
-        super().setup(last_lyr, m)
+        super().setup(last_lyr, m, **kwargs)
         t = time.time()
-        last_pto = last_lyr.protocol if last_lyr is not None else None
-        pto = self.protocol
-        # set mp and sp
-        # block = torch.ones(self.stride_shape, device=self.device)
-        # mp = torch.kron(pto.m, block) # kronecker product
-        # sp = torch.rand_like(mp)
-        # self.protocol_pool.setup(self.ishape, mp.shape, last=last_pto, s=sp, m=mp)
-        # print("mp", mp)
         self.protocol_pool = self.protocol.gen_mpooling(self.stride_shape)
         self.stat.time_offline += time.time() - t
         

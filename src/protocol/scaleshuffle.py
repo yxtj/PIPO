@@ -1,4 +1,5 @@
 from .ptobase import ProBaseServer, ProBaseClient, NumberType
+from .crypto import block_shuffle_perm, gen_shuffle, gen_reverse_shuffle, shuffle_tensor, deshuffle_tensor
 from typing import Union
 
 import socket
@@ -90,12 +91,11 @@ class ProtocolServer(ProBaseServer):
             # layer applies none (local layers / pooling propagate p = 1)
             self.rplast = 1
         else:
-            self.rplast = torch.argsort(last.p.ravel()).reshape(self.ishape)
+            self.rplast = gen_reverse_shuffle(last.p)
         self.s = self._gen_add_share_(s, oshape)
         self.m = self._gen_mul_share_(m, oshape)
         if p is None:
-            n = np.prod(self.oshape)
-            self.p = torch.randperm(n).reshape(self.oshape) # shuffle matrix
+            self.p = gen_shuffle(self.oshape, device=self.device) # shuffle matrix
         else:
             # honor the given permutation: int 1 = no shuffle (local layers,
             # pooling), or a propagated pending permutation tensor
@@ -117,28 +117,45 @@ class ProtocolServer(ProBaseServer):
         self.setup(ishape, oshape, last, s, m, p)
 
     def gen_mpooling(self, stride_shape: tuple) -> ProBaseServer:
+        # Block-wise shuffle (same policy as the shuffle protocol): the
+        # previous layer's full permutation is undone first
+        # (protocol_pool.rplast), then a block-wise one is applied to the
+        # masked tensor the client pools on. Because mp = kron(m, ones) is
+        # constant inside each pooling window, maxpool(p_full(x*mp)) ==
+        # p_block(maxpool(x)*m): the client-held pooled tensor carries exactly
+        # the pending permutation p_block and the multiplicative mask m this
+        # protocol propagates to the next layer (its mlast / rplast source).
+        # When this protocol was asked for an unpermuted output (p == 1, the
+        # last non-local layer) or the shape does not tile by the stride, fall
+        # back to a clean, unpermuted tensor.
         block = torch.ones(stride_shape, device=self.device)
         mp = torch.kron(self.m, block) # kronecker product
         sp = torch.rand_like(mp)
-        # TODO: block-wise shuffle
-        self.p = 1
-        pp = 1
+        C, H, W = self.ishape[-3:]
+        identity = isinstance(self.p, int) and self.p == 1
+        tiles = H % stride_shape[0] == 0 and W % stride_shape[1] == 0
+        if not identity and tiles:
+            p_full, p_block = block_shuffle_perm(self.ishape, stride_shape, device=self.device)
+            self.p = p_block
+        else:
+            p_full = 1
+            self.p = 1
         pro = ProtocolServer(self.socket, self.stat, self.he, self.device)
-        pro.setup(self.ishape, mp.shape, last=self.last, s=sp, m=mp, p=pp)
+        pro.setup(self.ishape, mp.shape, last=self.last, s=sp, m=mp, p=p_full)
         return pro
         
     def deshuflle_input(self, data: torch.Tensor) -> torch.Tensor:
         if isinstance(self.rplast, int):
             res = data
         else:
-            res = data.ravel()[self.rplast].reshape(self.ishape)
+            res = deshuffle_tensor(data, self.rplast).reshape(self.ishape)
         return res
 
     def shuffle_output(self, data: torch.Tensor) -> torch.Tensor:
         if isinstance(self.p, int):
             res = data
         else:
-            res = data.ravel()[self.p].reshape(self.oshape)
+            res = shuffle_tensor(data, self.p).reshape(self.oshape)
         return res
     
     def recv_offline(self) -> torch.Tensor:

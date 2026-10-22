@@ -18,8 +18,9 @@ def parse_args() -> argparse.Namespace:
         ("--host", "host"), ("--port", "port"), ("--device", "device"),
         ("--model", "model"), ("--n", "n"), ("--seed", "seed"),
         ("--wfile", "wfile"), ("--protocol", "protocol"),
+        ("--pad-ratio", "pad_ratio"),
     ]:
-        converter = int if dest in ("port", "n", "seed") else None
+        converter = {"port": int, "n": int, "seed": int, "pad_ratio": float}.get(dest)
         if converter:
             parser.add_argument(flag, default=argparse.SUPPRESS, type=converter)
         else:

@@ -8,7 +8,7 @@ import src.heutil as heutil
 import src.comm as comm
 from src.common.config import get_config
 from src.layer_basic.stat import Stat
-from .sshare import gen_add_share, gen_mul_share
+from .crypto import gen_add_share, gen_mul_share
 
 try:  # Pyfhel is optional; only needed when use_he is enabled
     from Pyfhel import Pyfhel

@@ -40,6 +40,7 @@ class Server():
             last_lyr = lyr
             # offline
             data = lyr.offline() # get the input of this layer (i-th intermediate result)
+            # handle shortcut connections: update the input buffer of shortcut-end layer
             if i in self.dependency:
                 for j in self.dependency[i]:
                     if j != i: # the own input fm is passed directly to the layer itself

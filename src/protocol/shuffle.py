@@ -1,4 +1,5 @@
 from .ptobase import ProBaseServer, ProBaseClient, NumberType
+from .crypto import block_shuffle_perm, gen_shuffle, gen_reverse_shuffle, shuffle_tensor, deshuffle_tensor
 from typing import Union
 
 import socket
@@ -67,8 +68,8 @@ class ProtocolServer(ProBaseServer):
         super().__init__(s, stat, he, device)
         self.rplast = None
         self.s = None
-        self.p = None
-        self.rp = None
+        self.p = None # permutation rule
+        self.rp = None # reverse permutation rule
         self.offline_buffer = None # used to generate random data for offline phase
     
     def setup(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None,
@@ -89,11 +90,10 @@ class ProtocolServer(ProBaseServer):
             # layer applies none (local layers / pooling propagate p = 1)
             self.rplast = 1
         else:
-            self.rplast = torch.argsort(last.p.ravel()).reshape(self.ishape)
+            self.rplast = gen_reverse_shuffle(last.p)
         self.s = self._gen_add_share_(s, oshape)
         if p is None:
-            n = np.prod(self.oshape)
-            self.p = torch.randperm(n).reshape(self.oshape) # shuffle matrix
+            self.p = gen_shuffle(self.oshape, device=self.device) # shuffle matrix
         else:
             # honor the given permutation: int 1 = no shuffle (local layers,
             # pooling), or a propagated pending permutation tensor
@@ -111,28 +111,44 @@ class ProtocolServer(ProBaseServer):
         self.setup(ishape, oshape, last, s, p=p)
 
     def gen_mpooling(self, stride_shape: tuple) -> ProBaseServer:
-        # TODO: block-wise shuffle
+        # Block-wise shuffle is the default for pooling: the previous layer's
+        # full permutation is undone first (protocol_pool.rplast), then a
+        # block-wise one is applied -- the stride-sized block grid is permuted
+        # as a whole and every block is shuffled per channel, so the client can
+        # pool correctly while never seeing the real spatial layout. The
+        # induced block permutation p_block is propagated so the next layer can
+        # invert it. When this protocol was asked for an unpermuted output
+        # (p == 1, the last non-local layer) or the shape does not tile by the
+        # stride, fall back to a clean, unpermuted tensor.
         block = torch.ones(stride_shape, device=self.device)
-        # pooling output shape: each spatial dim scaled by the stride (no
-        # multiplicative mask here, the ones tensor only carries the shape)
+        # pooling output shape: each spatial dim scaled by the stride (the
+        # ones tensor only carries the shape)
         pool_oshape = torch.kron(torch.ones(self.oshape, device=self.device), block).shape
-        self.p = 1
+        C, H, W = self.ishape[-3:]
+        identity = isinstance(self.p, int) and self.p == 1
+        tiles = H % stride_shape[0] == 0 and W % stride_shape[1] == 0
+        if not identity and tiles:
+            p_full, p_block = block_shuffle_perm(self.ishape, stride_shape, device=self.device)
+            self.p = p_block
+        else:
+            p_full = 1
+            self.p = 1
         pro = ProtocolServer(self.socket, self.stat, self.he, self.device)
-        pro.setup(self.ishape, pool_oshape, last=self.last, p=1)
+        pro.setup(self.ishape, pool_oshape, last=self.last, p=p_full)
         return pro
         
     def deshuflle_input(self, data: torch.Tensor) -> torch.Tensor:
         if isinstance(self.rplast, int):
             res = data
         else:
-            res = data.ravel()[self.rplast].reshape(self.ishape)
+            res = deshuffle_tensor(data, self.rplast).reshape(self.ishape)
         return res
 
     def shuffle_output(self, data: torch.Tensor) -> torch.Tensor:
         if isinstance(self.p, int):
             res = data
         else:
-            res = data.ravel()[self.p].reshape(self.oshape)
+            res = shuffle_tensor(data, self.p).reshape(self.oshape)
         return res
     
     def recv_offline(self) -> torch.Tensor:

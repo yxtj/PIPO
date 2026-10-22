@@ -1,10 +1,12 @@
 from src.common.config import get_config
 
-AVAILABLE_PROTOCOLS = ['plaintext', 'scale', 'shuffle', 'scaleshuffle', 'noise']
+AVAILABLE_PROTOCOLS = ['plaintext', 'scale', 'shuffle', 'pad',
+                       'scaleshuffle', 'noise']
+
 
 def validate_protocol(name: str) -> str:
     """Return ``name`` if it names a known protocol, else raise ValueError."""
-    if name not in _MODULES:
+    if name not in AVAILABLE_PROTOCOLS:
         raise ValueError(
             "Invalid protocol: {!r}. Available: {}".format(name, ", ".join(AVAILABLE_PROTOCOLS))
         )
@@ -19,6 +21,8 @@ elif PROTOCOL == 'scale':
     from .scale import *
 elif PROTOCOL == 'shuffle':
     from .shuffle import *
+elif PROTOCOL == 'pad':
+    from .pad import *
 elif PROTOCOL == 'scaleshuffle':
     from .scaleshuffle import *
 elif PROTOCOL == 'noise':
