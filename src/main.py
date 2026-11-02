@@ -34,7 +34,8 @@ def main():
     args = parse_args()
     cfg = load_config(args.config)
     mapping = {f"common.{k}": k for k in
-               ("host", "port", "device", "model", "n", "seed", "wfile", "protocol", "use_he")}
+               ("host", "port", "device", "model", "n", "seed", "wfile", "protocol",
+                "pad_ratio", "use_he")}
     mapping["client.verify"] = "verify"
     cfg = apply_args(cfg, args, mapping)
     common = cfg.common
