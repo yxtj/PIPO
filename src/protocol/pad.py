@@ -1,9 +1,14 @@
+'''Pure pad protocol: the masked output is inflated with k random elements
+resampled from the data itself and appended after the real elements, without
+any permutation (the client knows where the pads are). It is the no-shuffle
+baseline of the padshuffle protocol.'''
+
 from .ptobase import ProBaseServer, ProBaseClient, NumberType
-from .crypto import block_shuffle_perm, gen_shuffle, gen_reverse_shuffle, shuffle_tensor, deshuffle_tensor, pad_tensor, depad_tensor
+from .crypto import pad_tensor, pad_count
 from typing import Union
 
 import socket
-import struct
+
 import time
 import torch
 import numpy as np
@@ -18,22 +23,6 @@ from src.common.config import get_config
 __ALL__ = ['ProtocolClient', 'ProtocolServer']
 
 
-def _pad_count(n: int, ratio: float) -> int:
-    '''Number of pads inserted into an n-element tensor (ratio 0 = none,
-    1 = as many pads as real elements).'''
-    return int(round(n * ratio))
-
-
-def _recv_exact(s: socket.socket, n: int) -> bytes:
-    buf = b''
-    while len(buf) < n:
-        chunk = s.recv(n - len(buf))
-        if not chunk:
-            raise ConnectionError('socket closed while receiving pad metadata')
-        buf += chunk
-    return buf
-
-
 class ProtocolClient(ProBaseClient):
     def __init__(self, s: socket.socket, stat: Stat, he: Pyfhel, device: str='cpu'):
         super().__init__(s, stat, he, device)
@@ -43,11 +32,9 @@ class ProtocolClient(ProBaseClient):
 
     def setup(self, ishape:tuple, oshape:tuple, r: NumberType=None, **kwargs) -> None:
         super().setup(ishape, oshape)
-        # during setup the server reports how many pad elements the previous
-        # layer's output carries: the additive mask r must cover the inflated
-        # tensor, so its shape grows to (1, numel(ishape) + kin)
-        self.kin = struct.unpack('!i', _recv_exact(self.socket, 4))[0]
-        self.stat.byte_offline_recv += 4
+        # no handshake: the client derives the pad count of the previous
+        # layer's output from pad_ratio, exactly as the server computes it
+        self.kin = pad_count(int(np.prod(ishape)), get_config().common.pad_ratio)
         n = int(np.prod(ishape))
         self.r = self._gen_add_share_(r, (1, n + self.kin))
 
@@ -69,8 +56,12 @@ class ProtocolClient(ProBaseClient):
     def send_online(self, data: torch.Tensor) -> None:
         t0 = time.time()
         # flatten to the wire shape (1, numel + kin): what the client holds is
-        # either the raw input or the previous layer's inflated output
-        data = data.reshape(1, -1) - self.r
+        # either the raw input or the previous layer's inflated output.
+        # The derived kin can only over-estimate (a maxpool hands over a
+        # clean tensor), so clip r to the actual tensor; the server trims the
+        # same excess from the offline share.
+        data = data.reshape(1, -1)
+        data = data - self.r[:, :data.numel()]
         t1 = time.time()
         self.stat.byte_online_send += comm.send_torch(self.socket, data)
         t2 = time.time()
@@ -93,136 +84,88 @@ class ProtocolClient(ProBaseClient):
 class ProtocolServer(ProBaseServer):
     def __init__(self, s: socket.socket, stat: Stat, he: Pyfhel, device: str='cpu'):
         super().__init__(s, stat, he, device)
-        self.rplast = None
         self.s = None
-        self.p = None # permutation rule (int = identity)
-        self.k = 0 # pad count inserted into this layer's output
+        self.k = 0 # pad count appended to this layer's output
+        self.kin = 0 # pad count carried by the incoming tensor
 
     def setup(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None,
-        s: NumberType=None, m: NumberType=None, p=None, k: int=None, handshake: bool=True,
-        **kwargs) -> None:
+        s: NumberType=None, m: NumberType=None, k: int=None, **kwargs) -> None:
         '''
-        Shuffle + pad: the masked output is inflated with k random elements
-        resampled from the data itself, then permuted by p, so the client
-        cannot distinguish real elements from pads.
-        If p is None: generate p randomly; k = round(pad_ratio * numel(oshape)).
-        If p is 1: no shuffle and no padding (k = 0).
-        If p is a tensor: k defaults to the pad count propagated by `last`
-        (local layers), unless given explicitly (the pooling sub-protocol
-        passes a block permutation with k = 0: shuffle without inflation).
-        A consistency check rejects any p whose size does not cover
-        numel(oshape) + k data and pad elements.
-        handshake=False skips the pad-count notification to the client (the
-        pooling sub-protocol created by gen_mpooling has no client-side
-        counterpart receiving it).
+        Pure pad: the masked output is inflated with k random elements
+        resampled from the data itself and appended after the real elements.
+        No permutation is ever applied, so the client knows the pad positions
+        (this protocol is the no-shuffle baseline of padshuffle).
+        If k is None: k = round(pad_ratio * numel(oshape)) and the output is
+        inflated, except for the last non-local layer: the assembler marks it
+        with the compatibility flag p=1 (its plaintext result goes to the
+        client) and its output carries no pads. Local layers propagate the
+        pending pad count explicitly.
+        A consistency check rejects any k < 0.
+        The client derives the same count from pad_ratio on its side, so
+        setup performs no socket communication.
         The ``m`` argument is kept for compatibility with the layer setup
         calls and ignored.
         '''
         assert last is None or isinstance(last, ProtocolServer)
         super().setup(ishape, oshape, last)
-        assert p is None or isinstance(p, int) or torch.is_tensor(p)
-        # notify the client of the pad count carried by the *previous* layer's
-        # output (0 for the first layer), so its r covers the inflated tensor
-        if handshake:
-            kin = last.k if last is not None else 0
-            self.socket.sendall(struct.pack('!i', kin))
-            self.stat.byte_offline_send += 4
-        if last is None or isinstance(last.p, int):
-            # no pending permutation to invert: first layer, or the previous
-            # layer applies none (local layers / pooling propagate p = 1)
-            self.rplast = 1
-        else:
-            # 1-D inverse permutation over last's inflated output
-            # (numel(last.oshape) + last.k elements)
-            self.rplast = gen_reverse_shuffle(last.p)
+        # remember how many pads the incoming tensor carries (0 for the first
+        # layer); no handshake, the client derives it from pad_ratio
+        self.kin = last.k if last is not None else 0
         self.s = self._gen_add_share_(s, oshape)
-        if p is None:
-            ratio = get_config().common.pad_ratio
-            n = int(np.prod(oshape))
-            self.k = _pad_count(n, ratio)
-            self.p = gen_shuffle((1, n + self.k), device=self.device) # permutes data + pads
-        elif isinstance(p, int):
-            assert k is None or k == 0, "identity permutation carries no pads"
-            self.p = p
+        if k is not None:
+            assert k >= 0, "pad count must not be negative"
+            self.k = k
+        elif kwargs.get('p') == 1:
+            # the assembler's "hand the plaintext result to the client" marker
             self.k = 0
         else:
-            # honor the given permutation: propagated by local layers (k
-            # defaults to last's pad count) or given explicitly with its own
-            # pad count (pooling sub-protocol)
-            self.p = p
-            self.k = k if k is not None else (last.k if last is not None else 0)
-        assert isinstance(self.p, int) or self.p.numel() == int(np.prod(oshape)) + self.k, \
-            "permutation must cover numel(oshape) data elements plus k pads"
+            self.k = pad_count(int(np.prod(oshape)), get_config().common.pad_ratio)
 
     def setup_local(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None,
             ltype: str='activation',  **kwargs) -> None:
         s = 0
-        # a local layer applies no new shuffle or padding, but the state of
-        # the last shuffled layer persists in the client-held tensor —
-        # propagate it so the next layer's rplast inverts the right
-        # permutation and drops the right number of pads
-        p = last.p if last is not None else 1
-        self.setup(ishape, oshape, last, s, p=p)
+        # a local layer appends no pad of its own, but the padding of the last
+        # non-local layer persists in the client-held tensor — propagate its
+        # count so the next layer reports the right kin
+        k = last.k if last is not None else 0
+        self.setup(ishape, oshape, last, s, k=k)
 
     def gen_mpooling(self, stride_shape: tuple) -> ProBaseServer:
-        # Block-wise shuffle (same policy as the shuffle protocol): the
-        # previous layer's full permutation is undone first (deshuffle +
-        # depad in protocol_pool.recv_*), then a block-wise one is applied to
-        # the masked tensor the client pools on; pooling windows never cross a
-        # block boundary, so maxpool(p_full(x - r)) == p_block(maxpool(x - r)).
-        # The pooling sub-protocol emits a pure block permutation (k = 0:
-        # shuffle without inflation), so the client-held pooled tensor is
-        # exactly p_block(maxpool(x)) -- this protocol then propagates p_block
-        # as the pending permutation for the next layer's rplast.
-        # When this protocol was asked for an unpermuted output (p == 1, the
-        # last non-local layer) or the shape does not tile by the stride, fall
-        # back to a clean, unpermuted tensor.
+        # Pure pad has no permutation to protect pooling, so the pooling
+        # sub-protocol stays clean: the previous layer's pads are dropped by
+        # this protocol's recv_*, and the client pools on an unpermuted
+        # masked tensor. Its output carries no pads (k = 0), which this
+        # protocol propagates as the pending pad count for the next layer.
         block = torch.ones(stride_shape, device=self.device)
         # pooling output shape: each spatial dim scaled by the stride (the
         # ones tensor only carries the shape)
         pool_oshape = torch.kron(torch.ones(self.oshape, device=self.device), block).shape
-        C, H, W = self.ishape[-3:]
-        identity = isinstance(self.p, int) and self.p == 1
-        tiles = H % stride_shape[0] == 0 and W % stride_shape[1] == 0
-        if not identity and tiles:
-            p_full, p_block = block_shuffle_perm(self.ishape, stride_shape, device=self.device)
-            self.p = p_block
-            self.k = 0 # the pooled output carries no pads, only the permutation
-        else:
-            p_full = 1
-            self.p = 1
-            self.k = 0
+        self.k = 0
         pro = ProtocolServer(self.socket, self.stat, self.he, self.device)
-        pro.setup(self.ishape, pool_oshape, last=self.last, p=p_full, k=0, handshake=False)
+        pro.setup(self.ishape, pool_oshape, last=self.last, k=0)
         return pro
 
-    def deshuflle_input(self, data: torch.Tensor) -> torch.Tensor:
-        '''Undo the previous layer's permutation and drop its pad elements.'''
-        if isinstance(self.rplast, int):
-            res = data
-        else:
-            # flatten first: the reverse pattern may be n-D (a pooled block
-            # permutation, e.g. (1, C, h, w)) while depad works on the 1-D
-            # concatenation layout (real elements first, pads last)
-            res = deshuffle_tensor(data, self.rplast).reshape(1, -1)
-            # rplast restores the concatenation order (real elements first,
-            # pads last): keep the real prefix
-            res = depad_tensor(res, (1, int(np.prod(self.ishape))))
-        return res.reshape(self.ishape)
+    def depad_input(self, data: torch.Tensor) -> torch.Tensor:
+        '''Drop the pads carried by the previous layer's output: they are
+        appended after the real elements, so the real prefix is kept.
+        The count is not trusted blindly: the client's derived kin can
+        over-estimate after a maxpool (which hands over a clean tensor), so
+        any excess is trimmed here as well.'''
+        n = int(np.prod(self.ishape))
+        return data.reshape(1, -1)[:, :n].reshape(self.ishape)
 
-    def pad_shuffle_output(self, data: torch.Tensor) -> torch.Tensor:
-        '''Inflate the masked data with k data-dependent pads, then permute.'''
-        if isinstance(self.p, int):
-            return data
+    def pad_output(self, data: torch.Tensor) -> torch.Tensor:
+        '''Inflate the masked data with k data-dependent pads (no shuffle).'''
+        if self.k == 0:
+            return data.reshape(self.oshape)
         n = data.numel()
-        padded = pad_tensor(data.reshape(1, -1), (1, n + self.k), device=self.device)
-        return shuffle_tensor(padded, self.p)
+        return pad_tensor(data.reshape(1, -1), (1, n + self.k), device=self.device)
 
     def recv_offline(self) -> torch.Tensor:
         t0 = time.time()
         data = self.basic_recv_offline()
         t1 = time.time()
-        data = self.deshuflle_input(data)
+        data = self.depad_input(data)
         t2 = time.time()
         self.stat.time_offline_comp += t2 - t1
         self.stat.time_offline_recv += t1 - t0
@@ -231,7 +174,7 @@ class ProtocolServer(ProBaseServer):
     def send_offline(self, data: np.ndarray) -> None:
         t0 = time.time()
         data = data + self.s # additive mask in the clean coordinate system
-        data = self.pad_shuffle_output(data)
+        data = self.pad_output(data)
         t1 = time.time()
         self.basic_send_offline(data)
         t2 = time.time()
@@ -240,14 +183,14 @@ class ProtocolServer(ProBaseServer):
 
     def recv_online(self) -> torch.Tensor:
         '''
-        Receive the previous layer's inflated p_last(x - r); return the
-        unshuffled, de-padded x - r.
+        Receive the previous layer's inflated x - r; return the de-padded
+        x - r (in the clean coordinate system, no permutation).
         '''
         t0 = time.time()
         data, nbyte = comm.recv_torch(self.socket)
         data = data.to(self.device)
         t1 = time.time()
-        data = self.deshuflle_input(data)
+        data = self.depad_input(data)
         t2 = time.time()
         self.stat.byte_online_recv += nbyte
         self.stat.time_online_recv += t1 - t0
@@ -256,11 +199,11 @@ class ProtocolServer(ProBaseServer):
 
     def send_online(self, data: torch.Tensor) -> None:
         '''
-        Input data = W(x - r); send p(concat(data - s, pads)) to client.
+        Input data = W(x - r); send concat(data - s, pads) to client.
         '''
         t0 = time.time()
         data = data - self.s # additive mask in the clean coordinate system
-        data = self.pad_shuffle_output(data)
+        data = self.pad_output(data)
         t1 = time.time()
         self.stat.byte_online_send += comm.send_torch(self.socket, data)
         t2 = time.time()

@@ -158,6 +158,12 @@ def _gen_pad(real: torch.Tensor, count: int, device) -> torch.Tensor:
     return pad.to(device)
 
 
+def pad_count(n: int, ratio: float) -> int:
+    '''Number of pads appended to an ``n``-element tensor (ratio 0 = none,
+    1 = as many pads as real elements).'''
+    return int(round(n * ratio))
+
+
 def pad_tensor(data: torch.Tensor, oshape, dtype=None, device=None) -> torch.Tensor:
     '''Pad ``data`` up to ``oshape``, comparing every dimension: the real
     elements are kept in the leading slice of each dimension (the "front")

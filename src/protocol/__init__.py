@@ -1,6 +1,6 @@
 from src.common.config import get_config
 
-AVAILABLE_PROTOCOLS = ['plaintext', 'scale', 'shuffle', 'pad',
+AVAILABLE_PROTOCOLS = ['plaintext', 'scale', 'shuffle', 'pad', 'padshuffle',
                        'scaleshuffle', 'noise']
 
 
@@ -23,6 +23,8 @@ elif PROTOCOL == 'shuffle':
     from .shuffle import *
 elif PROTOCOL == 'pad':
     from .pad import *
+elif PROTOCOL == 'padshuffle':
+    from .padshuffle import *
 elif PROTOCOL == 'scaleshuffle':
     from .scaleshuffle import *
 elif PROTOCOL == 'noise':

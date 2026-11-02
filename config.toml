@@ -12,8 +12,8 @@ model = "poc-1"           # model name, resolved through models/registry.py
 n = 1                     # number of online inference rounds
 seed = 0                  # RNG seed for random weights (shared client + server)
 use_he = false            # use HE (Pyfhel CKKS) in the offline phase
-protocol = "scale"        # plaintext | scale | shuffle | pad | scaleshuffle | noise
-pad_ratio = 0.0           # pad protocol: 0 = no padding, 1 = 1x random padding
+protocol = "scale"        # plaintext | scale | shuffle | pad | padshuffle | scaleshuffle | noise
+pad_ratio = 0.0           # pad/padshuffle: 0 = no padding, 1 = as many pads as real elements
 wfile = ""                # weights file (state dict); empty = random/default
 
 [client]

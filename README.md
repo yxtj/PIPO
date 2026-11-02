@@ -139,7 +139,7 @@ python tests/minionn.py                # MiniONN (pretrained weights)
 python tests/resnet.py                 # resnet-cifar-20
 python tests/openpose.py body          # OpenPose body (pretrained weights)
 python tests/run_all.py                # everything above
-# protocol variant as extra arg: plaintext | scale | shuffle | noise
+# protocol variant as extra arg: plaintext | scale | shuffle | pad | padshuffle | scaleshuffle | noise
 python tests/poc.py plaintext
 ```
 
@@ -163,7 +163,8 @@ Behavior is selected through `config.toml` (`[common]` section) or CLI flags:
 
 | Option (`config.toml`) | CLI flag   | Values                                   | Default | Description                                    |
 | ---------------------- | ---------- | ---------------------------------------- | ------- | ---------------------------------------------- |
-| `protocol`             | `--protocol` | `plaintext`, `scale`, `shuffle`, `noise` | `scale` | Security protocol variant                      |
+| `protocol`             | `--protocol` | `plaintext`, `scale`, `shuffle`, `pad`, `padshuffle`, `scaleshuffle`, `noise` | `scale` | Security protocol variant                      |
+| `pad_ratio`            | `--pad-ratio` | float                                  | `0.0`   | Pad count ratio for `pad` / `padshuffle`        |
 | `use_he`               | `--use-he` | `true`, `false`                          | `false` | Enable HE in the offline phase                 |
 | `model`                | `--model`  | any name from `models/registry.py`       | `poc-1` | The model both roles must use identically      |
 | `wfile`                | `--wfile`  | path                                     | (empty) | Pretrained weights file (state dict)           |
