@@ -130,8 +130,10 @@ dmypy.json
 ###################
 
 /.vscode/
-/.codegraph/
 /opencode.jsonc
+/.codegraph/
+
+/archived/
 /backup/
 /reference/
 /log/
