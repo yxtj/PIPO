@@ -30,13 +30,13 @@ class ProtocolClient(ProBaseClient):
         self.pre = None
         self.kin = 0 # pad count embedded in the tensors this client holds
 
-    def setup(self, ishape:tuple, oshape:tuple, r: NumberType=None, **kwargs) -> None:
+    def setup(self, ishape:tuple, oshape:tuple, **kwargs) -> None:
         super().setup(ishape, oshape)
         # no handshake: the client derives the pad count of the previous
         # layer's output from pad_ratio, exactly as the server computes it
         self.kin = pad_count(int(np.prod(ishape)), get_config().common.pad_ratio)
         n = int(np.prod(ishape))
-        self.r = self._gen_add_share_(r, (1, n + self.kin))
+        self.r = self._gen_add_share_(kwargs.get('r'), (1, n + self.kin))
 
     def send_offline(self) -> None:
         t = time.time()
@@ -88,47 +88,40 @@ class ProtocolServer(ProBaseServer):
         self.k = 0 # pad count appended to this layer's output
         self.kin = 0 # pad count carried by the incoming tensor
 
-    def setup(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None,
-        s: NumberType=None, m: NumberType=None, k: int=None, **kwargs) -> None:
+    def setup(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None, **kwargs) -> None:
         '''
         Pure pad: the masked output is inflated with k random elements
         resampled from the data itself and appended after the real elements.
         No permutation is ever applied, so the client knows the pad positions
         (this protocol is the no-shuffle baseline of padshuffle).
-        If k is None: k = round(pad_ratio * numel(oshape)) and the output is
-        inflated, except for the last non-local layer: the assembler marks it
-        with the compatibility flag p=1 (its plaintext result goes to the
-        client) and its output carries no pads. Local layers propagate the
-        pending pad count explicitly.
-        A consistency check rejects any k < 0.
-        The client derives the same count from pad_ratio on its side, so
+        A local layer appends no pad and propagates the pending pad count of
+        the previous layer; the last non-local layer (whose plaintext result
+        goes to the client) carries no pads. Otherwise k is derived from
+        pad_ratio, unless supplied through kwargs by an internal sub-protocol.
         setup performs no socket communication.
-        The ``m`` argument is kept for compatibility with the layer setup
-        calls and ignored.
         '''
+        super().setup(ishape, oshape, last, **kwargs)
         assert last is None or isinstance(last, ProtocolServer)
-        super().setup(ishape, oshape, last)
         # remember how many pads the incoming tensor carries (0 for the first
         # layer); no handshake, the client derives it from pad_ratio
         self.kin = last.k if last is not None else 0
+        if self.is_local_layer:
+            s = 0
+            k = last.k if last is not None else 0
+        else:
+            s = kwargs.get('s')
+            if 'k' in kwargs:
+                k = kwargs['k']
+            elif self.is_last_layer:
+                k = 0
+            else:
+                k = None
         self.s = self._gen_add_share_(s, oshape)
         if k is not None:
             assert k >= 0, "pad count must not be negative"
             self.k = k
-        elif kwargs.get('p') == 1:
-            # the assembler's "hand the plaintext result to the client" marker
-            self.k = 0
         else:
             self.k = pad_count(int(np.prod(oshape)), get_config().common.pad_ratio)
-
-    def setup_local(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None,
-            ltype: str='activation',  **kwargs) -> None:
-        s = 0
-        # a local layer appends no pad of its own, but the padding of the last
-        # non-local layer persists in the client-held tensor — propagate its
-        # count so the next layer reports the right kin
-        k = last.k if last is not None else 0
-        self.setup(ishape, oshape, last, s, k=k)
 
     def gen_mpooling(self, stride_shape: tuple) -> ProBaseServer:
         # Pure pad has no permutation to protect pooling, so the pooling

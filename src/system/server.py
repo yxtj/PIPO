@@ -32,11 +32,9 @@ class Server():
             name = lyr.__class__.__name__
             print('  offline {}: {}(inshape={}, outshape={}) ...'.format(i, name, lyr.ishape, lyr.oshape))
             # setup
-            m = 1.0 if i == last_non_local else None
-            # the last non-local layer hands the plaintext result to the
-            # client (m = 1), so it must not shuffle its output either
-            p = 1 if i == last_non_local else None
-            lyr.setup(last_lyr, m, p=p)
+            # the last non-local layer hands its plaintext result to the
+            # client, so the protocol must not mask or permute its output
+            lyr.setup(last_lyr, is_last_layer=(i == last_non_local))
             last_lyr = lyr
             # offline
             data = lyr.offline() # get the input of this layer (i-th intermediate result)

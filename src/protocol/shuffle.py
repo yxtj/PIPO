@@ -22,9 +22,9 @@ class ProtocolClient(ProBaseClient):
         self.r = None
         self.pre = None
     
-    def setup(self, ishape:tuple, oshape:tuple, r: NumberType=None, **kwargs) -> None:
+    def setup(self, ishape:tuple, oshape:tuple, **kwargs) -> None:
         super().setup(ishape, oshape)
-        self.r = self._gen_add_share_(r, ishape)
+        self.r = self._gen_add_share_(kwargs.get('r'), ishape)
 
     def send_offline(self) -> None:
         t = time.time()
@@ -72,19 +72,26 @@ class ProtocolServer(ProBaseServer):
         self.rp = None # reverse permutation rule
         self.offline_buffer = None # used to generate random data for offline phase
     
-    def setup(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None,
-            s: NumberType=None, m: NumberType=None, p=None, **kwargs) -> None:
+    def setup(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None, **kwargs) -> None:
         '''
         Pure shuffle: only additive masks are used -- r on the client side
         (protecting x) and s on the server side (protecting W); there is no
-        multiplicative mask. The ``m`` argument is kept for compatibility with
-        the layer setup calls and ignored.
-        If s is None, then generate s randomly.
-        If p is None, then generate p randomly. If p is 1, then no shuffle.
+        multiplicative mask. A local layer applies no new shuffle but
+        propagates the pending permutation; the last non-local layer uses the
+        identity permutation. s/p may be supplied through kwargs by internal
+        sub-protocols (e.g. gen_mpooling).
         '''
+        super().setup(ishape, oshape, last, **kwargs)
         assert last is None or isinstance(last, ProtocolServer)
-        super().setup(ishape, oshape, last)
-        assert p is None or isinstance(p, int) or p.shape == ishape
+        if self.is_local_layer:
+            s = 0
+            p = last.p if last is not None else 1
+        else:
+            s = kwargs.get('s')
+            p = kwargs.get('p')
+            if p is None and self.is_last_layer:
+                p = 1
+        assert p is None or isinstance(p, int) or p.numel() == int(np.prod(ishape))
         if last is None or isinstance(last.p, int):
             # no pending permutation to invert: first layer, or the previous
             # layer applies none (local layers / pooling propagate p = 1)
@@ -99,16 +106,6 @@ class ProtocolServer(ProBaseServer):
             # pooling), or a propagated pending permutation tensor
             self.p = p
         # self.rp = torch.argsort(self.p.ravel()).reshape(self.ishape) # unshuffle matrix
-    
-    def setup_local(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None, 
-            ltype: str='activation',  **kwargs) -> None:
-        s = 0
-        # a local layer applies no new shuffle, but the permutation from the
-        # last shuffled layer persists in the client-held tensor (elementwise
-        # ops commute with permutations) — propagate it so the next layer's
-        # rplast inverts the right permutation
-        p = last.p if last is not None else 1
-        self.setup(ishape, oshape, last, s, p=p)
 
     def gen_mpooling(self, stride_shape: tuple) -> ProBaseServer:
         # Block-wise shuffle is the default for pooling: the previous layer's

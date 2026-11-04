@@ -20,9 +20,9 @@ class ProtocolClient(ProBaseClient):
         self.r = None
         self.pre = None
     
-    def setup(self, ishape:tuple, oshape:tuple, r: NumberType=None, **kwargs) -> None:
+    def setup(self, ishape:tuple, oshape:tuple, **kwargs) -> None:
         super().setup(ishape, oshape)
-        self.r = self._gen_add_share_(r, ishape)
+        self.r = self._gen_add_share_(kwargs.get('r'), ishape)
 
     def send_offline(self) -> None:
         t = time.time()
@@ -68,26 +68,29 @@ class ProtocolServer(ProBaseServer):
         self.s = None
         self.m = None
     
-    def setup(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None,
-            s: NumberType=None, m: NumberType=None, **kwargs) -> None:
+    def setup(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None, **kwargs) -> None:
         '''
-        if m is None, then generate m randomly (>0).
-        if s is None, then generate s randomly.
+        A local layer propagates the previous mask (reshaped by a flatten
+        layer); the last non-local layer uses m = 1. Otherwise m is random
+        unless supplied through kwargs by an internal sub-protocol.
+        Similarly, s is random unless supplied through kwargs; local layers
+        use s = 0.
         '''
-        super().setup(ishape, oshape, last)
-        mlast = last.m if last is not None else 1
-        self.mlast = mlast
+        super().setup(ishape, oshape, last, **kwargs)
+        self.mlast = last.m if last is not None else 1
+        if self.is_local_layer:
+            s = 0
+            if self.ltype == 'flatten':
+                m = last.m.flatten(1, -1) if last is not None else 1
+            else:
+                m = last.m if last is not None else 1
+        else:
+            s = kwargs.get('s')
+            m = kwargs.get('m')
+            if m is None and self.is_last_layer:
+                m = 1.0
         self.s = self._gen_add_share_(s, oshape)
         self.m = self._gen_mul_share_(m, oshape)
-
-    def setup_local(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None, 
-            ltype: str='activation',  **kwargs) -> None:
-        if ltype == 'flatten':
-            m = last.m.flatten(1, -1) if last is not None else 1
-        else:
-            m = last.m if last is not None else 1
-        s = 0
-        self.setup(ishape, oshape, last, s, m)
 
     def gen_mpooling(self, stride_shape: tuple) -> ProBaseServer:
         block = torch.ones(stride_shape, device=self.device)

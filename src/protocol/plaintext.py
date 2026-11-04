@@ -58,11 +58,7 @@ class ProtocolServer(ProBaseServer):
         super().__init__(s, stat, he, device)
     
     def setup(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None, **kwargs) -> None:
-        super().setup(ishape, oshape, last)
-
-    def setup_local(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None, 
-            ltype: str='activation',  **kwargs) -> None:
-        return self.setup(ishape, oshape, last, **kwargs)
+        super().setup(ishape, oshape, last, **kwargs)
 
     def gen_mpooling(self, stride_shape: tuple) -> ProBaseServer:
         return self

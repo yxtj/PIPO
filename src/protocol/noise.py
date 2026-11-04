@@ -20,9 +20,9 @@ class ProtocolClient(ProBaseClient):
         self.r = None
         self.pre = None
 
-    def setup(self, ishape:tuple, oshape:tuple, r: NumberType=None, **kwargs) -> None:
+    def setup(self, ishape:tuple, oshape:tuple, **kwargs) -> None:
         super().setup(ishape, oshape)
-        self.r = self._gen_add_share_(r, ishape)
+        self.r = self._gen_add_share_(kwargs.get('r'), ishape)
 
     def send_offline(self) -> None:
         self.basic_send_offline(self.r)
@@ -45,11 +45,19 @@ class ProtocolClient(ProBaseClient):
 
 class ProtocolServer(ProBaseServer):
     def setup(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None,
-              s: NumberType=None, m: NumberType=None, **kwargs) -> None:
-        assert isinstance(last, ProtocolServer)
+              **kwargs) -> None:
+        super().setup(ishape, oshape, last, **kwargs)
+        assert last is None or isinstance(last, ProtocolServer)
         assert 'noise_sigma' in kwargs, 'noise_sigma is required in kwargs'
-        super().setup(ishape, oshape, last)
         self.mlast = last.m if last is not None else 1
+        if self.is_local_layer:
+            s = 0
+            m = last.m if last is not None else 1
+        else:
+            s = kwargs.get('s')
+            m = kwargs.get('m')
+            if m is None and self.is_last_layer:
+                m = 1.0
         self.s = self._gen_add_share_(s, oshape)
         self.m = self._gen_mul_share_(m, oshape)
         sigma = kwargs['noise_sigma']

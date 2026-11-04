@@ -1,5 +1,4 @@
 from socket import socket
-from typing import Union
 import time
 import torch
 import numpy as np
@@ -18,6 +17,9 @@ __all__ = ['LayerClient', 'LayerServer', 'LocalLayerClient', 'LocalLayerServer']
 
 
 class LayerClient(LayerCommon):
+    # semantic layer kind, interpreted by the protocol module
+    ltype = 'linear'
+
     def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he: Pyfhel, device: str) -> None:
         super().__init__(socket, ishape, oshape, he, device)
         # self.is_input_layer = False
@@ -26,7 +28,7 @@ class LayerClient(LayerCommon):
     
     def setup(self, **kwargs):
         t = time.time()
-        self.protocol.setup(self.ishape, self.oshape, r = None, **kwargs)
+        self.protocol.setup(self.ishape, self.oshape, ltype=self.ltype, **kwargs)
         self.stat.time_offline += time.time() - t
     
     def offline(self) -> None:
@@ -52,17 +54,27 @@ class LayerClient(LayerCommon):
     
     
 class LayerServer(LayerCommon):
+    # semantic layer kind, interpreted by the protocol module
+    ltype = 'linear'
+
     def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str) -> None:
         he = Pyfhel() if get_config().common.use_he else None
         super().__init__(socket, ishape, oshape, he, device)
         self.layer = layer
         self.protocol = ProtocolServer(socket, self.stat, self.he, device)
     
-    def setup(self, last_lyr: LayerCommon, m: Union[torch.Tensor, float, int]=None, **kwargs) -> None:
+    def setup(self, last_lyr: LayerCommon, is_last_layer: bool=False, **kwargs) -> None:
         t = time.time()
         assert last_lyr is None or isinstance(last_lyr, LayerServer)
         last_pto = last_lyr.protocol if last_lyr is not None else None
-        self.protocol.setup(self.ishape, self.oshape, last=last_pto, s=None, m=m, **kwargs)
+        self.protocol.setup(
+            self.ishape, self.oshape,
+            last=last_pto,
+            ltype=self.ltype,
+            is_local_layer=isinstance(self, LocalLayerServer),
+            is_last_layer=is_last_layer,
+            **kwargs,
+        )
         self.stat.time_offline += time.time() - t
     
     def offline(self) -> np.ndarray:
@@ -88,6 +100,8 @@ class LayerServer(LayerCommon):
 # %% local layer specialization
 
 class LocalLayerClient(LayerClient):
+    ltype = 'activation'
+
     def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel, device: str) -> None:
         super().__init__(socket, ishape, oshape, he, device)
     
@@ -98,18 +112,10 @@ class LocalLayerClient(LayerClient):
         raise NotImplementedError
 
 class LocalLayerServer(LayerServer):
+    ltype = 'activation'
+
     def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str) -> None:
         super().__init__(socket, ishape, oshape, layer, device)
-    
-    def setup(self, last_lyr: LayerCommon, m: Union[torch.Tensor, float, int]=None, **kwargs) -> None:
-        # forward the last layer's m
-        t = time.time()
-        assert isinstance(last_lyr, LayerServer)
-        last_pto = last_lyr.protocol if last_lyr is not None else None
-        self.protocol.setup_local(self.ishape, self.oshape, last_pto)
-        # m = last_pto.m if last_pto is not None else m
-        # self.protocol.setup(self.ishape, self.oshape, last=last_pto, s=0, m=m)
-        self.stat.time_offline += time.time() - t
         
     def offline(self) -> None:
         return

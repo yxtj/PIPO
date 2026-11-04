@@ -30,13 +30,13 @@ class ProtocolClient(ProBaseClient):
         self.pre = None
         self.kin = 0 # pad count embedded in the tensors this client holds
 
-    def setup(self, ishape:tuple, oshape:tuple, r: NumberType=None, **kwargs) -> None:
+    def setup(self, ishape:tuple, oshape:tuple, **kwargs) -> None:
         super().setup(ishape, oshape)
         # no handshake: the client derives the pad count of the previous
         # layer's output from pad_ratio, exactly as the server computes it
         self.kin = pad_count(int(np.prod(ishape)), get_config().common.pad_ratio)
         n = int(np.prod(ishape))
-        self.r = self._gen_add_share_(r, (1, n + self.kin))
+        self.r = self._gen_add_share_(kwargs.get('r'), (1, n + self.kin))
 
     def send_offline(self) -> None:
         t = time.time()
@@ -89,27 +89,31 @@ class ProtocolServer(ProBaseServer):
         self.p = None # permutation rule (int = identity)
         self.k = 0 # pad count inserted into this layer's output
 
-    def setup(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None,
-        s: NumberType=None, m: NumberType=None, p=None, k: int=None,
-        **kwargs) -> None:
+    def setup(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None, **kwargs) -> None:
         '''
         Shuffle + pad: the masked output is inflated with k random elements
         resampled from the data itself, then permuted by p, so the client
         cannot distinguish real elements from pads.
-        If p is None: generate p randomly; k = round(pad_ratio * numel(oshape)).
-        If p is 1: no shuffle and no padding (k = 0).
-        If p is a tensor: k defaults to the pad count propagated by `last`
-        (local layers), unless given explicitly (the pooling sub-protocol
-        passes a block permutation with k = 0: shuffle without inflation).
-        A consistency check rejects any p whose size does not cover
-        numel(oshape) + k data and pad elements.
+        A local layer applies no new shuffle or padding but propagates the
+        pending permutation and pad count; the last non-local layer uses the
+        identity permutation and no pads. Otherwise p is random and k is
+        derived from pad_ratio, unless supplied through kwargs by an internal
+        sub-protocol.
         setup performs no socket communication: the client derives the
         previous layer's pad count from pad_ratio on its side.
-        The ``m`` argument is kept for compatibility with the layer setup
-        calls and ignored.
         '''
+        super().setup(ishape, oshape, last, **kwargs)
         assert last is None or isinstance(last, ProtocolServer)
-        super().setup(ishape, oshape, last)
+        if self.is_local_layer:
+            s = 0
+            p = last.p if last is not None else 1
+            k = None
+        else:
+            s = kwargs.get('s')
+            p = kwargs.get('p')
+            k = kwargs.get('k')
+            if p is None and self.is_last_layer:
+                p = 1
         assert p is None or isinstance(p, int) or torch.is_tensor(p)
         if last is None or isinstance(last.p, int):
             # no pending permutation to invert: first layer, or the previous
@@ -137,16 +141,6 @@ class ProtocolServer(ProBaseServer):
             self.k = k if k is not None else (last.k if last is not None else 0)
         assert isinstance(self.p, int) or self.p.numel() == int(np.prod(oshape)) + self.k, \
             "permutation must cover numel(oshape) data elements plus k pads"
-
-    def setup_local(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None,
-            ltype: str='activation',  **kwargs) -> None:
-        s = 0
-        # a local layer applies no new shuffle or padding, but the state of
-        # the last shuffled layer persists in the client-held tensor —
-        # propagate it so the next layer's rplast inverts the right
-        # permutation and drops the right number of pads
-        p = last.p if last is not None else 1
-        self.setup(ishape, oshape, last, s, p=p)
 
     def gen_mpooling(self, stride_shape: tuple) -> ProBaseServer:
         # Block-wise shuffle (same policy as the shuffle protocol): the

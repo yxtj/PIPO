@@ -135,20 +135,23 @@ class ProBaseServer(ProtocolBase):
     def __init__(self, s: socket.socket, stat: Stat, he: Pyfhel, device: str='cpu'):
         super().__init__(s, stat, he, device)
         self.last = None
+        self.ltype = 'linear'
+        self.is_local_layer = False
+        self.is_last_layer = False
     
     def setup(self, ishape: tuple, oshape: tuple, last: ProtocolBase=None, **kwargs) -> None:
         super().setup(ishape, oshape)
         self.last = last
+        # semantic layer information; protocols decide from it whether to
+        # mask/shuffle/pad the output and how to propagate the last state
+        self.ltype = kwargs.get('ltype', 'linear')
+        self.is_local_layer = kwargs.get('is_local_layer', False)
+        self.is_last_layer = kwargs.get('is_last_layer', False)
         if USE_HE:
             len = struct.unpack('!i', self.socket.recv(4))[0]
             b_ctx = self.socket.recv(len)
             self.he.from_bytes_context(b_ctx)
             self.stat.byte_offline_recv += 4 + len
-    
-    def setup_local(self, ishape: tuple, oshape: tuple, last: ProtocolBase=None,
-        ltype: str='activation', **kwargs) -> None:
-        assert ltype in ['activation', 'flatten', 'identity']
-        raise NotImplementedError
 
     def gen_mpooling(self, stride_shape: tuple) -> ProtocolBase:
         raise NotImplementedError
