@@ -1,7 +1,7 @@
 from src.common.config import get_config
 
 AVAILABLE_PROTOCOLS = ['plaintext', 'scale', 'shuffle', 'pad', 'padshuffle',
-                       'scaleshuffle', 'noise']
+                       'scaleshuffle', 'padscaleshuffle', 'noise']
 
 
 def validate_protocol(name: str) -> str:
@@ -27,5 +27,7 @@ elif PROTOCOL == 'padshuffle':
     from .padshuffle import *
 elif PROTOCOL == 'scaleshuffle':
     from .scaleshuffle import *
+elif PROTOCOL == 'padscaleshuffle':
+    from .padscaleshuffle import *
 elif PROTOCOL == 'noise':
     from .noise import *

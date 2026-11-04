@@ -244,17 +244,10 @@ Poc8Model = nn.Sequential(
 )
 _fill_running_stats(Poc8Model)
 map["8"] = (Poc8Inshape, Poc8Model)
-# Model 9: non-ReLU activations (sigmoid / leakyrelu / gelu)
+# Model 9: positive-homogeneous non-ReLU activation (leakyrelu)
 # Shape: 6 -> 5 -> 2
 
 Poc9Inshape = (6,)
-Poc9Model_sig = nn.Sequential(
-    nn.Linear(6, 5),
-    nn.Sigmoid(),
-    nn.Linear(5, 2),
-)
-map["9-sigmoid"] = (Poc9Inshape, Poc9Model_sig)
-
 Poc9Model_lrelu = nn.Sequential(
     nn.Linear(6, 5),
     nn.LeakyReLU(0.2),
@@ -262,9 +255,27 @@ Poc9Model_lrelu = nn.Sequential(
 )
 map["9-leakyrelu"] = (Poc9Inshape, Poc9Model_lrelu)
 
-Poc9Model_gelu = nn.Sequential(
+# Model 10: non-homogeneous activations (sigmoid / gelu). The multiplicative
+# mask kept on the client side by the scale-family protocols does not commute
+# with them (sigmoid(x*m) != sigmoid(x)*m, same for gelu), so these models are
+# excluded from scale experiments by default.
+# Shape: 6 -> 5 -> 2
+
+Poc10Inshape = (6,)
+Poc10Model_sig = nn.Sequential(
+    nn.Linear(6, 5),
+    nn.Sigmoid(),
+    nn.Linear(5, 2),
+)
+map["10-sigmoid"] = (Poc10Inshape, Poc10Model_sig)
+
+Poc10Model_gelu = nn.Sequential(
     nn.Linear(6, 5),
     nn.GELU(),
     nn.Linear(5, 2),
 )
-map["9-gelu"] = (Poc9Inshape, Poc9Model_gelu)
+map["10-gelu"] = (Poc10Inshape, Poc10Model_gelu)
+
+# Model keys (without the ``poc-`` prefix) unsupported under the
+# multiplicative-mask protocols: scale, scaleshuffle, padscaleshuffle, noise.
+UNSUPPORTED_SCALE = frozenset({"10-sigmoid", "10-gelu"})

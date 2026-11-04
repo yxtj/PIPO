@@ -35,10 +35,10 @@ class CommonConfig:
     # whether to use HE (Pyfhel) in the offline phase
     use_he: bool = False
     # protocol variant: plaintext, scale, shuffle, pad, padshuffle,
-    # scaleshuffle, noise
+    # scaleshuffle, padscaleshuffle, noise
     protocol: str = "scale"
-    # pad ratio for the pad / padshuffle protocols (0 = no padding, 1 = as
-    # many pads as real elements)
+    # pad ratio for the pad / padshuffle / padscaleshuffle protocols (0 = no
+    # padding, 1 = as many pads as real elements)
     pad_ratio: float = 0.0
     # weights file (state dict); empty = registry default / random weights
     wfile: str = ""

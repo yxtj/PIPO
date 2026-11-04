@@ -13,6 +13,21 @@ import torch
 from models import minionn, openpose, poc, resnet, resnet_cifar, vgg
 
 
+# Protocols that keep a multiplicative mask on the client side; activations
+# that are not positive-homogeneous cannot be evaluated under them.
+MULTIPLICATIVE_PROTOCOLS = frozenset({"scale", "scaleshuffle", "padscaleshuffle", "noise"})
+
+# Fully-qualified model names excluded from those protocols by default.
+SCALE_UNSUPPORTED = frozenset("poc-" + key for key in poc.UNSUPPORTED_SCALE)
+
+
+def unsupported_models(protocol: str) -> frozenset:
+    """Model names to skip by default when running ``protocol``."""
+    if protocol in MULTIPLICATIVE_PROTOCOLS:
+        return SCALE_UNSUPPORTED
+    return frozenset()
+
+
 def _uniform_init(model, low: float = -1.0, high: float = 1.0):
     for p in model.parameters():
         p.data.uniform_(low, high)

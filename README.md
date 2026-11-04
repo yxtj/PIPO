@@ -139,7 +139,7 @@ python tests/minionn.py                # MiniONN (pretrained weights)
 python tests/resnet.py                 # resnet-cifar-20
 python tests/openpose.py body          # OpenPose body (pretrained weights)
 python tests/run_all.py                # everything above
-# protocol variant as extra arg: plaintext | scale | shuffle | pad | padshuffle | scaleshuffle | noise
+# protocol variant as extra arg: plaintext | scale | shuffle | pad | padshuffle | scaleshuffle | padscaleshuffle | noise
 python tests/poc.py plaintext
 ```
 
@@ -157,14 +157,19 @@ the mean absolute difference normalized by the typical output magnitude.
 protocols the residual is floating-point error accumulated across the protocol
 chain (deeper models allow a looser bound per script).
 
+Models marked by `models/registry.unsupported_models(protocol)` are skipped by
+default: `poc-10-sigmoid` / `poc-10-gelu` use non-homogeneous activations that
+do not commute with the multiplicative mask of `scale`, `scaleshuffle`,
+`padscaleshuffle` and `noise` (an explicit model name still runs them).
+
 ## Protocol variants & configuration
 
 Behavior is selected through `config.toml` (`[common]` section) or CLI flags:
 
 | Option (`config.toml`) | CLI flag   | Values                                   | Default | Description                                    |
 | ---------------------- | ---------- | ---------------------------------------- | ------- | ---------------------------------------------- |
-| `protocol`             | `--protocol` | `plaintext`, `scale`, `shuffle`, `pad`, `padshuffle`, `scaleshuffle`, `noise` | `scale` | Security protocol variant                      |
-| `pad_ratio`            | `--pad-ratio` | float                                  | `0.0`   | Pad count ratio for `pad` / `padshuffle`        |
+| `protocol`             | `--protocol` | `plaintext`, `scale`, `shuffle`, `pad`, `padshuffle`, `scaleshuffle`, `padscaleshuffle`, `noise` | `scale` | Security protocol variant                      |
+| `pad_ratio`            | `--pad-ratio` | float                                  | `0.0`   | Pad count ratio for `pad` / `padshuffle` / `padscaleshuffle` |
 | `use_he`               | `--use-he` | `true`, `false`                          | `false` | Enable HE in the offline phase                 |
 | `model`                | `--model`  | any name from `models/registry.py`       | `poc-1` | The model both roles must use identically      |
 | `wfile`                | `--wfile`  | path                                     | (empty) | Pretrained weights file (state dict)           |
@@ -200,6 +205,10 @@ python -m src.main server --use-he
 | `plaintext`       | None                | None                                   | Direct data transfer, no masking                                                       |
 | `scale` (default) | ✅ Additive mask `r` | ✅ Multiplicative `m` + additive `s`    | `x → x-r` on client; `data → data·m ± s` on server                                     |
 | `shuffle`         | ✅ Same as scale     | ✅ Scale + element-wise permutation `p` | Server permutes output elements before sending, client cannot map values to positions  |
+| `pad`             | ✅ Same as scale     | ✅ Inflate with data-dependent pads     | Server appends `k = round(α·N)` resampled pads after the real elements, no permutation |
+| `padshuffle`      | ✅ Same as scale     | ✅ Inflate + permutation                | Server pads the output then permutes the whole inflated tensor                        |
+| `scaleshuffle`    | ✅ Same as scale     | ✅ Scale + element-wise permutation `p` | Client only ever holds `Wx·m`; the server also permutes the scaled output             |
+| `padscaleshuffle` | ✅ Same as scale     | ✅ Inflate + scale + permutation        | Pads the output, then scales and permutes the whole inflated tensor                    |
 | `noise`           | ✅ Same as scale     | ✅ Scale + Gaussian DP noise            | Server adds `N(0, σ²)` to output, prevents precise reconstruction via repeated queries |
 
 ## Example models
