@@ -22,21 +22,47 @@ def _ext_params(module: nn.Module) -> dict:
     BatchNorm carries no kernel but acts as a 1x1 op (each output position
     depends only on the input at the same position), so it gets the
     ``k=s=(1,1), p=(0,0)`` geometry for the incremental block paths.
+
+    ``attrs`` holds every op-specific parameter (kernel geometry, concat axis,
+    activation/pooling/flatten/softmax params); generic fields stay on
+    ``ExecutionStep``.
     """
-    params: dict = {}
+    attrs: dict = {}
     if hasattr(module, "kernel_size"):
-        k = module.kernel_size
-        s = module.stride
-        p = module.padding
-        k = (k, k) if isinstance(k, int) else tuple(k)
-        s = (s, s) if isinstance(s, int) else tuple(s)
-        p = (p, p) if isinstance(p, int) else tuple(p)
-        params.update({"k": k, "s": s, "p": p})
+        attrs.update({"k": list(_pair(module.kernel_size)),
+                      "s": list(_pair(module.stride)),
+                      "p": list(_pair(module.padding))})
     elif isinstance(module, (nn.BatchNorm2d, nn.BatchNorm1d)):
-        params.update({"k": (1, 1), "s": (1, 1), "p": (0, 0)})
-    if hasattr(module, "dim") and not hasattr(module, "weight"):
-        params["concat_dim"] = module.dim
-    return params
+        attrs.update({"k": [1, 1], "s": [1, 1], "p": [0, 0]})
+    if isinstance(module, ConcatOp):
+        attrs["concat_dim"] = module.dim
+    if isinstance(module, nn.LeakyReLU):
+        attrs["negative_slope"] = float(module.negative_slope)
+    elif isinstance(module, nn.GELU):
+        attrs["approximate"] = module.approximate
+    elif isinstance(module, nn.MaxPool2d):
+        attrs.update({
+            "kernel_size": list(_pair(module.kernel_size)),
+            "stride": list(_pair(module.stride)),
+            "padding": list(_pair(module.padding)),
+            "dilation": list(_pair(module.dilation)),
+            "return_indices": bool(module.return_indices),
+            "ceil_mode": bool(module.ceil_mode),
+        })
+    elif isinstance(module, nn.AvgPool2d):
+        attrs.update({
+            "kernel_size": list(_pair(module.kernel_size)),
+            "stride": list(_pair(module.stride)),
+            "padding": list(_pair(module.padding)),
+            "ceil_mode": bool(module.ceil_mode),
+            "count_include_pad": bool(module.count_include_pad),
+            "divisor_override": module.divisor_override,
+        })
+    elif isinstance(module, nn.Flatten):
+        attrs.update({"start_dim": int(module.start_dim), "end_dim": int(module.end_dim)})
+    elif isinstance(module, nn.Softmax):
+        attrs["dim"] = int(module.dim)
+    return {"attrs": attrs} if attrs else {}
 
 
 def _pair(v):
@@ -70,8 +96,8 @@ def _static_shape(module: nn.Module, input_shapes: list[tuple[int, ...]]) -> tup
     """
     x = input_shapes[0]
     if isinstance(module, nn.Conv2d):
-        params = _ext_params(module)
-        k, s, p = params["k"], params["s"], params["p"]
+        attrs = _ext_params(module)["attrs"]
+        k, s, p = attrs["k"], attrs["s"], attrs["p"]
         d = _pair(module.dilation)
         return (
             module.out_channels,
@@ -81,8 +107,8 @@ def _static_shape(module: nn.Module, input_shapes: list[tuple[int, ...]]) -> tup
     if isinstance(module, nn.Linear):
         return (module.out_features,)
     if isinstance(module, (nn.MaxPool2d, nn.AvgPool2d)):
-        params = _ext_params(module)
-        k, s, p = params["k"], params["s"], params["p"]
+        attrs = _ext_params(module)["attrs"]
+        k, s, p = attrs["k"], attrs["s"], attrs["p"]
         d = _pair(getattr(module, "dilation", 1))
         return (
             x[0],
@@ -114,8 +140,9 @@ def expand_model(model: DagModel) -> tuple[list[ExecutionStep], list[nn.Module]]
 
     Numbering comes entirely from ``model.flat_entries()`` — DagModel's own
     flattened walk (the same one ``dag_repr(global_fm=True)`` renders); this
-    function only attaches IR/protocol semantics: ``ExecutionStep`` fields,
-    ``layer_idx`` for ``SERVER_OPS``, and kernel params.
+    function only attaches IR/protocol semantics: ``ExecutionStep`` fields plus
+    op-specific parameters (``layer_idx`` for ``SERVER_OPS``, kernel geometry,
+    ...) inside ``attrs``.
 
     Returns:
         steps: list of ExecutionStep with global FM indices
@@ -127,14 +154,15 @@ def expand_model(model: DagModel) -> tuple[list[ExecutionStep], list[nn.Module]]
         if e.is_block:
             continue
         op = type(e.module).__name__.lower()
-        layer_idx = len(leaves) if isinstance(e.module, SERVER_OPS) else None
+        params = _ext_params(e.module)
+        if isinstance(e.module, SERVER_OPS):
+            params.setdefault("attrs", {})["layer_idx"] = len(leaves)
         steps.append(
             ExecutionStep(
                 sources=list(e.sources),
                 dest=e.dest,
                 op=op,
-                layer_idx=layer_idx,
-                **_ext_params(e.module),
+                **params,
             )
         )
         leaves.append(e.module)
@@ -231,14 +259,28 @@ def build_steps(model, all_shapes):
     steps = []
     for i, layer in enumerate(model):
         op = type(layer).__name__.lower()
-        layer_idx = i if isinstance(layer, SERVER_OPS) else None
         params = _ext_params(layer)
-        step = ExecutionStep(sources=[i], dest=i + 1, op=op, layer_idx=layer_idx, **params)
+        if isinstance(layer, SERVER_OPS):
+            params.setdefault("attrs", {})["layer_idx"] = i
+        step = ExecutionStep(sources=[i], dest=i + 1, op=op, **params)
         steps.append(step)
     return steps, all_shapes
 
 
 def build_model_info(model, inshape):
+    """Build the server-side model IR, including per-step execution shapes.
+
+    ``ishape``/``oshape`` are stored without the batch dimension; the client
+    prepends the runtime batch (1) when constructing its layer objects.
+    """
+    inshape = tuple(inshape)
     all_shapes = compute_shapes(model, inshape)
     steps, shapes = build_steps(model, all_shapes)
-    return ModelInfo(steps=steps, shapes=shapes, inshape=inshape)
+    if len(shapes) != len(steps) + 1:
+        raise ValueError(
+            "shape/step mismatch: {} shapes for {} steps".format(len(shapes), len(steps))
+        )
+    for i, step in enumerate(steps):
+        step.ishape = tuple(shapes[i])
+        step.oshape = tuple(shapes[i + 1])
+    return ModelInfo(steps=steps, shapes=[tuple(s) for s in shapes], inshape=inshape)

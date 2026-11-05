@@ -10,9 +10,10 @@ try:  # Pyfhel is optional; only needed when use_he is enabled
 except ImportError:  # pragma: no cover
     Pyfhel = None
 class SoftmaxClient(LocalLayerClient):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel, device: str) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel, device: str,
+                 lyr: torch.nn.Module = None) -> None:
         super().__init__(socket, ishape, oshape, he, device)
-        self.layer = torch.nn.Softmax(1)
+        self.layer = lyr if lyr is not None else torch.nn.Softmax(1)
     
     def online(self, xm) -> torch.Tensor:
         t0 = time.time()

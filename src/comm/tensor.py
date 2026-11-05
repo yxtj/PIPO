@@ -13,7 +13,7 @@ def serialize_torch(data:torch.Tensor) -> bytes:
 
 def deserialize_torch(data:bytes) -> torch.Tensor:
     buffer = io.BytesIO(data)
-    result = torch.load(buffer)
+    result = torch.load(buffer, weights_only=True)
     result.requires_grad = False
     return result
 

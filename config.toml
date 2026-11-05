@@ -1,20 +1,26 @@
 # PIPO default configuration.
 #
 # Shared by the client and the server: `[common]` holds the settings both
-# roles need, `[client]`/`[server]` hold role-specific ones. Pass a different
-# file with `--config <path>`. Command-line arguments override the values here.
+# roles need, `[common.model]` selects the model and its weights,
+# `[server.protocol]` selects the protocol variant. Pass a different file
+# with `--config <path>`. Command-line arguments override the values here.
 
 [common]
 host = "127.0.0.1"
 port = 8100
-device = "cpu"
-model = "poc-1"           # model name, resolved through models/registry.py
+device = "cpu"            # device shared by the client and the server
 n = 1                     # number of online inference rounds
-seed = 0                  # RNG seed for random weights (shared client + server)
 use_he = false            # use HE (Pyfhel CKKS) in the offline phase
-protocol = "scaleshuffle"        # plaintext | scale | shuffle | pad | padshuffle | scaleshuffle | padscaleshuffle | noise
+
+[common.model]
+name = "poc-1"            # model name, resolved through models/registry.py
+seed = 0                  # RNG seed for random weights (shared client + server)
+wfile = ""                # explicit weights file; empty = search wfolder
+wfolder = "pretrained"    # default weights dir: <wfolder>/<model_name>.pt|.pth
+
+[server.protocol]
+name = "scaleshuffle"     # plaintext | scale | shuffle | pad | padshuffle | scaleshuffle | padscaleshuffle | noise
 pad_ratio = 1.0           # pad/padshuffle/padscaleshuffle: 0 = no padding, 1 = as many pads as real elements
-wfile = ""                # weights file (state dict); empty = random/default
 
 [client]
 verify = false            # compare the system result against local inference

@@ -1,38 +1,51 @@
-import socket
-import torch
-import torch.nn as nn
-# from Pyfhel import Pyfhel
-
+from src.comm.model_info import recv_model_info
+from src.common.config import get_config
 from src.system import util
 
+
 class Client():
-    def __init__(self, socket: socket.socket, model: nn.Module, inshape: tuple, he):
+    def __init__(self, socket, model=None, inshape=None, he=None):
+        # Constructors stay side-effect free: no recv, no layer construction.
+        # setup() performs the model-info exchange and builds layers.
         self.socket = socket
-        # model
         self.model = model
-        self.inshape = inshape
-        # he
+        self._inshape = inshape
         self.he = he
-        # layers
-        self.layers, self.linears, self.shortcuts, self.locals = util.make_client_model(socket, model, inshape, he)
-        print("Model loaded {} layers: {} linear layers, {} local layers, {} shortcut layers.".format(
-            len(self.layers), len(self.linears), len(self.locals), len(self.shortcuts)))
-        # for shortcut layer
-        # self.to_buffer = [v for k,v in self.shortcuts.items()]
-        
+        self.model_name = None
+        self.info = None
+        self.inshape = None
+        self.layers = []
+        self.linears = []
+        self.shortcuts = {}
+        self.locals = []
+
+    def setup(self):
+        """Receive the server-parsed model info and build client layers."""
+        message = recv_model_info(self.socket)
+        self.model_name = message.model_name
+        self.info = message.info
+        self.inshape = self.info.inshape
+        if self._inshape is not None and tuple(self._inshape) != tuple(self.inshape):
+            raise ValueError(
+                "client inshape {} does not match server model info {}".format(
+                    tuple(self._inshape), tuple(self.inshape)))
+        device = get_config().common.device
+        self.layers, self.linears, self.shortcuts, self.locals = \
+            util.make_client_model_from_info(self.socket, self.info, self.he, device)
+        print("Model info received: {} ({} layers, input {})".format(
+            self.model_name, len(self.layers), tuple(self.inshape)))
+
     def offline(self):
+        if self.info is None:
+            raise RuntimeError("Client.setup() must be called before offline()")
         for i, lyr in enumerate(self.layers):
             print('  offline {}: {} ...'.format(i, lyr.__class__.__name__))
-            # setup
-            # is_input_layer = i == 0
-            # is_output_layer = i == len(self.layers) - 1
             lyr.setup()
-            # lyr.setup(is_input_layer=is_input_layer, is_output_layer=is_output_layer)
-            # offline
             lyr.offline()
-            
-    def online(self, data: torch.Tensor) -> torch.Tensor:
+
+    def online(self, data):
+        if self.info is None:
+            raise RuntimeError("Client.setup() must be called before online()")
         for lyr in self.layers:
             data = lyr.online(data)
         return data
-

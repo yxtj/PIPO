@@ -2,7 +2,9 @@ import torch
 import torch.nn as nn
 
 from src.layer_basic.stat import Stat
+from src.common.config import get_config
 from src.common.model_info import compute_shapes
+from src.common.model_spec import build_client_module, build_client_specs
 from src.model.dag_model import AddOp, ConcatOp, DagModel, JumpOp
 
 import src.layer as layer
@@ -35,9 +37,10 @@ def compute_shape(model, inshape):
 
 
 def make_client_model(socket, model, inshape, he):
+    """Build client layers by parsing a local model directly (legacy path)."""
     modules, sources = flat_layers(model)
     shapes = compute_shape(model, inshape)
-    device = next(model.parameters()).device if next(model.parameters(), None) is not None else "cpu"
+    device = get_config().common.device
     layers = []
     linears = [] # linear layers
     scl = {} # shortcut layers
@@ -56,13 +59,13 @@ def make_client_model(socket, model, inshape, he):
             layers.append(layer.ReLUClient(socket, shapes[i], shapes[i+1], he, device))
             locals.append(i)
         elif isinstance(lyr, nn.Sigmoid):
-            layers.append(layer.SigmoidClient(socket, shapes[i], shapes[i+1], he, device, lyr))
+            layers.append(layer.SigmoidClient(socket, shapes[i], shapes[i+1], he, lyr, device))
             locals.append(i)
         elif isinstance(lyr, nn.LeakyReLU):
-            layers.append(layer.LeakyReLUClient(socket, shapes[i], shapes[i+1], he, device, lyr))
+            layers.append(layer.LeakyReLUClient(socket, shapes[i], shapes[i+1], he, lyr, device))
             locals.append(i)
         elif isinstance(lyr, nn.GELU):
-            layers.append(layer.GELUClient(socket, shapes[i], shapes[i+1], he, device, lyr))
+            layers.append(layer.GELUClient(socket, shapes[i], shapes[i+1], he, lyr, device))
             locals.append(i)
         elif isinstance(lyr, nn.MaxPool2d):
             layers.append(layer.MaxPoolClient(socket, shapes[i], shapes[i+1], he, lyr, device))
@@ -70,7 +73,7 @@ def make_client_model(socket, model, inshape, he):
             layers.append(layer.AvgPoolClient(socket, shapes[i], shapes[i+1], he, lyr, device))
             linears.append(i)
         elif isinstance(lyr, nn.Flatten):
-            layers.append(layer.FlattenClient(socket, shapes[i], shapes[i+1], he, device))
+            layers.append(layer.FlattenClient(socket, shapes[i], shapes[i+1], he, lyr, device))
             locals.append(i)
             # the input of the flatten layer should have a concrete shape
         elif isinstance(lyr, JumpOp):
@@ -102,10 +105,87 @@ def make_client_model(socket, model, inshape, he):
     return layers, linears, shortcuts, locals
 
 
+def make_client_model_from_info(socket, info, he, device):
+    """Build client layers from a server-parsed ModelInfo - no local model needed."""
+    specs = build_client_specs(info)
+    layers = []
+    linears = [] # linear layers
+    scl = {} # shortcut layers
+    locals = [] # local layers
+    for spec in specs:
+        i = spec.index
+        # runtime tensors carry a leading batch dimension
+        ishape = (1, *spec.ishape)
+        oshape = (1, *spec.oshape)
+        op = spec.op
+        if op == "conv2d":
+            layers.append(layer.ConvClient(socket, ishape, oshape, he, device))
+            linears.append(i)
+        elif op == "linear":
+            layers.append(layer.FcClient(socket, ishape, oshape, he, device))
+            linears.append(i)
+        elif op in ("batchnorm1d", "batchnorm2d"):
+            layers.append(layer.BnClient(socket, ishape, oshape, he, device))
+            linears.append(i)
+        elif op == "relu":
+            layers.append(layer.ReLUClient(socket, ishape, oshape, he, device))
+            locals.append(i)
+        elif op == "sigmoid":
+            lyr = build_client_module(spec)
+            layers.append(layer.SigmoidClient(socket, ishape, oshape, he, lyr, device))
+            locals.append(i)
+        elif op == "leakyrelu":
+            lyr = build_client_module(spec)
+            layers.append(layer.LeakyReLUClient(socket, ishape, oshape, he, lyr, device))
+            locals.append(i)
+        elif op == "gelu":
+            lyr = build_client_module(spec)
+            layers.append(layer.GELUClient(socket, ishape, oshape, he, lyr, device))
+            locals.append(i)
+        elif op == "maxpool2d":
+            lyr = build_client_module(spec)
+            layers.append(layer.MaxPoolClient(socket, ishape, oshape, he, lyr, device))
+        elif op == "avgpool2d":
+            lyr = build_client_module(spec)
+            layers.append(layer.AvgPoolClient(socket, ishape, oshape, he, lyr, device))
+            linears.append(i)
+        elif op == "flatten":
+            lyr = build_client_module(spec)
+            layers.append(layer.FlattenClient(socket, ishape, oshape, he, lyr, device))
+            locals.append(i)
+        elif op == "jumpop":
+            layers.append(layer.JumpClient(socket, ishape, oshape, he, device, srcs=list(spec.sources), own=i))
+            scl[i] = list(spec.sources)
+        elif op == "addop":
+            layers.append(layer.AdditionClient(socket, ishape, oshape, he, device, srcs=list(spec.sources), own=i))
+            scl[i] = list(spec.sources)
+        elif op == "concatop":
+            layers.append(layer.ConcatenationClient(socket, ishape, oshape, he, device, srcs=list(spec.sources), own=i))
+            scl[i] = list(spec.sources)
+        elif op == "identity":
+            layers.append(layer.IdentityClient(socket, ishape, oshape, he, device))
+            linears.append(i)
+        elif op == "softmax":
+            assert i == len(specs) - 1, "Softmax should be the last layer."
+            layers.append(layer.SoftmaxClient(socket, ishape, oshape, he, device, build_client_module(spec)))
+            locals.append(i)
+        else:
+            raise Exception("Unknown layer type: " + op)
+    # set shortcuts inputs
+    shortcuts = {} # {shortcut layer idx: input fm idx list}
+    for idx, oidx in scl.items():
+        if any(isinstance(layers[j], layer.LocalLayerClient) for j in oidx):
+            msg = "Shortcut {} input should not be a local layer. Checking the model or adding an identity layer.".format(idx)
+            raise Exception(msg)
+        shortcuts[idx] = oidx
+    # shortcuts is {shortcut layer idx: intermediate result idx}
+    return layers, linears, shortcuts, locals
+
+
 def make_server_model(socket, model, inshape):
     modules, sources = flat_layers(model)
     shapes = compute_shape(model, inshape)
-    device = next(model.parameters()).device if next(model.parameters(), None) is not None else "cpu"
+    device = get_config().common.device
     layers = []
     linears = [] # linear layers
     scl = {} # shortcut layers

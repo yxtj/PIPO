@@ -30,8 +30,19 @@ def run_compare(model_name, protocol='scale', n=1, seed=0, wfile=None, device='c
 
     Returns a dict with result / reference / diff metrics / timings.
     """
+    from src.common.config import load_config, set_config
+
+    cfg = load_config()
+    cfg.server.protocol.name = protocol
+    cfg.common.use_he = False
+    cfg.common.model.wfile = wfile or ''
+    cfg.common.device = device
+    set_config(cfg)
+
     torch.manual_seed(seed)
-    inshape, model = registry.load(model_name, seed=seed, wfile=wfile, device=device)
+    inshape, model = registry.load(
+        model_name, seed=seed, wfile=wfile,
+        wfolder=cfg.common.model.wfolder, device=device)
     data = torch.rand(1, *inshape)
     if device.startswith('cuda') and torch.cuda.is_available():
         data = data.to(device)
@@ -41,24 +52,20 @@ def run_compare(model_name, protocol='scale', n=1, seed=0, wfile=None, device='c
     out, err = tempfile.TemporaryFile(), tempfile.TemporaryFile()
     args = [sys.executable, '-m', 'src.main', 'server',
             '--model', model_name, '--n', str(n), '--seed', str(seed),
-            '--protocol', protocol, '--port', str(port)]
+            '--protocol', protocol, '--port', str(port), '--device', device]
     if wfile:
         args += ['--wfile', str(wfile)]
     server = subprocess.Popen(
         args,
         cwd=str(PROJECT_ROOT), stdout=out, stderr=err)
     try:
-        from src.common.config import load_config, set_config
         from src.system import Client
 
-        cfg = load_config()
-        cfg.common.protocol = protocol
-        cfg.common.use_he = False
-        cfg.common.wfile = wfile or ''
-        set_config(cfg)
-
         c = _connect(port)
-        client = Client(c, model, inshape, None)
+        # the client builds its layers from the server-sent model info; the
+        # local model above is only the plaintext reference
+        client = Client(c, he=None)
+        client.setup()
         client.offline()
         t0 = time.time()
         res = None

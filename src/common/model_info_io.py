@@ -22,24 +22,25 @@ def _step_to_dict(step: ExecutionStep) -> dict:
         "sources": list(step.sources),
         "dest": step.dest,
         "op": step.op,
-        "layer_idx": step.layer_idx,
-        "k": list(step.k) if step.k else None,
-        "s": list(step.s) if step.s else None,
-        "p": list(step.p) if step.p else None,
-        "concat_dim": step.concat_dim,
+        "ishape": list(step.ishape) if step.ishape is not None else None,
+        "oshape": list(step.oshape) if step.oshape is not None else None,
+        "attrs": dict(step.attrs or {}),
     }
 
 
 def _step_from_dict(d: dict) -> ExecutionStep:
+    attrs = dict(d.get("attrs") or {})
+    # fold fields from older cached IRs into attrs
+    for key in ("layer_idx", "k", "s", "p", "concat_dim"):
+        if key not in attrs and d.get(key) is not None:
+            attrs[key] = d[key]
     return ExecutionStep(
         sources=[int(s) for s in d["sources"]],
         dest=int(d["dest"]),
         op=d["op"],
-        layer_idx=int(d["layer_idx"]) if d.get("layer_idx") is not None else None,
-        k=tuple(d["k"]) if d.get("k") else None,
-        s=tuple(d["s"]) if d.get("s") else None,
-        p=tuple(d["p"]) if d.get("p") else None,
-        concat_dim=int(d["concat_dim"]) if d.get("concat_dim") is not None else None,
+        ishape=tuple(d["ishape"]) if d.get("ishape") is not None else None,
+        oshape=tuple(d["oshape"]) if d.get("oshape") is not None else None,
+        attrs=attrs,
     )
 
 

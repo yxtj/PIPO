@@ -10,9 +10,9 @@ except ImportError:  # pragma: no cover
 class FlattenClient(LocalLayerClient):
     ltype = 'flatten'
 
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel, device: str) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel, lyr: torch.nn.Module, device: str) -> None:
         super().__init__(socket, ishape, oshape, he, device)
-        self.layer = torch.nn.Flatten()
+        self.layer = lyr
     
     def online(self, xm) -> torch.Tensor:
         t0 = time.time()

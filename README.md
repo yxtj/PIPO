@@ -102,14 +102,20 @@ The client's final output is always `f(x)·m_last` — the server never reveals 
 
 ## How to run
 
-One entry point serves both roles; the model and all launch parameters come
-from `config.toml` / CLI arguments:
+One entry point serves both roles; the server-side model and all launch
+parameters come from `config.toml` / CLI arguments. The server parses the model
+and sends its structural info to the client on connect, so the client builds its
+layers without loading a model. `--model` is only needed on the server (and for
+local verification):
 
 ```bash
-# terminal 1 - server (listens)
+# terminal 1 - server (listens, parses the model)
 python -m src.main server
 
-# terminal 2 - client (connects and verifies the result)
+# terminal 2 - client (builds layers from the server-sent model info)
+python -m src.main client
+
+# verify against a local model; it is loaded from the server-sent model name
 python -m src.main client --verify
 ```
 
@@ -117,7 +123,7 @@ Override anything through CLI flags (they win over `config.toml`):
 
 ```bash
 python -m src.main server --model minionn --wfile pretrained/minionn.pt --protocol scale
-python -m src.main client --model minionn --protocol scale --verify --n 2
+python -m src.main client --verify --n 2
 ```
 
 Model training lives under `train/` (run from the repo root):
@@ -164,27 +170,42 @@ do not commute with the multiplicative mask of `scale`, `scaleshuffle`,
 
 ## Protocol variants & configuration
 
-Behavior is selected through `config.toml` (`[common]` section) or CLI flags:
+Behavior is selected through `config.toml` or CLI flags:
 
 | Option (`config.toml`) | CLI flag   | Values                                   | Default | Description                                    |
 | ---------------------- | ---------- | ---------------------------------------- | ------- | ---------------------------------------------- |
-| `protocol`             | `--protocol` | `plaintext`, `scale`, `shuffle`, `pad`, `padshuffle`, `scaleshuffle`, `padscaleshuffle`, `noise` | `scale` | Security protocol variant                      |
-| `pad_ratio`            | `--pad-ratio` | float                                  | `0.0`   | Pad count ratio for `pad` / `padshuffle` / `padscaleshuffle` |
-| `use_he`               | `--use-he` | `true`, `false`                          | `false` | Enable HE in the offline phase                 |
-| `model`                | `--model`  | any name from `models/registry.py`       | `poc-1` | The model both roles must use identically      |
-| `wfile`                | `--wfile`  | path                                     | (empty) | Pretrained weights file (state dict)           |
-| `host`/`port`          | `--host`/`--port` | -                                 | `127.0.0.1:8100` | Connection endpoints                  |
-| `n`                    | `--n`      | int                                      | `1`     | Number of online inference rounds              |
-| `seed`                 | `--seed`   | int                                      | `0`     | RNG seed for random weights (shared)           |
+| `common.model.name`            | `--model`  | any name from `models/registry.py`       | `poc-1` | Model built/parsed by the server               |
+| `common.model.seed`            | `--seed`   | int                                      | `0`     | RNG seed for random weights (shared)           |
+| `common.model.wfile`           | `--wfile`  | path                                     | (empty) | Explicit weights file                          |
+| `common.model.wfolder`         | `--wfolder`| path                                     | `pretrained` | Default dir searched for `<name>.pt`/`.pth` |
+| `server.protocol.name`         | `--protocol` | `plaintext`, `scale`, `shuffle`, `pad`, `padshuffle`, `scaleshuffle`, `padscaleshuffle`, `noise` | `scale` | Security protocol variant                      |
+| `server.protocol.pad_ratio`    | `--pad-ratio` | float                                  | `0.0`   | Pad count ratio for `pad` / `padshuffle` / `padscaleshuffle` |
+| `common.use_he`                | `--use-he` | `true`, `false`                          | `false` | Enable HE in the offline phase                 |
+| `common.device`                | `--device` | `cpu`, `cuda`                            | `cpu`   | Device shared by the client and the server     |
+| `common.host`/`common.port`    | `--host`/`--port` | -                                 | `127.0.0.1:8100` | Connection endpoints                  |
+| `common.n`                     | `--n`      | int                                      | `1`     | Number of online inference rounds              |
+
+Weights are resolved as: explicit `wfile` first, then
+`<wfolder>/<model_name>.pt` / `.pth`, then the registry default (random init).
 
 ```toml
 # config.toml
 [common]
 host = "127.0.0.1"
 port = 8100
-model = "poc-1"
-protocol = "scale"
+device = "cpu"
+n = 1
 use_he = false
+
+[common.model]
+name = "poc-1"
+seed = 0
+wfile = ""
+wfolder = "pretrained"
+
+[server.protocol]
+name = "scale"
+pad_ratio = 0.0
 ```
 
 ```bash
@@ -278,7 +299,8 @@ PIPO/
 │   ├── common/         # Shared config / model IR helpers
 │   │   ├── config.py   #   config.toml loading + CLI override machinery
 │   │   ├── model_info.py   # static shape computation / structural IR
-│   │   ├── model_info_io.py#
+│   │   ├── model_info_io.py# JSON encoding / hashing / file persistence
+│   │   ├── model_spec.py   # ModelInfo -> client layer specs
 |   |   `-- types.py    #   ExecutionStep / ModelInfo dataclasses
 │   ├── system/         # Wires layers + protocol + networking
 │   │   ├── client.py   #   Client orchestration (setup → offline → online)

@@ -17,8 +17,8 @@ def parse_args() -> argparse.Namespace:
     for flag, dest in [
         ("--host", "host"), ("--port", "port"), ("--device", "device"),
         ("--model", "model"), ("--n", "n"), ("--seed", "seed"),
-        ("--wfile", "wfile"), ("--protocol", "protocol"),
-        ("--pad-ratio", "pad_ratio"),
+        ("--wfile", "wfile"), ("--wfolder", "wfolder"),
+        ("--protocol", "protocol"), ("--pad-ratio", "pad_ratio"),
     ]:
         converter = {"port": int, "n": int, "seed": int, "pad_ratio": float}.get(dest)
         if converter:
@@ -33,19 +33,23 @@ def parse_args() -> argparse.Namespace:
 def main():
     args = parse_args()
     cfg = load_config(args.config)
-    mapping = {f"common.{k}": k for k in
-               ("host", "port", "device", "model", "n", "seed", "wfile", "protocol",
-                "pad_ratio", "use_he")}
-    mapping["client.verify"] = "verify"
+    mapping = {
+        "common.host": "host",
+        "common.port": "port",
+        "common.device": "device",
+        "common.n": "n",
+        "common.use_he": "use_he",
+        "common.model.name": "model",
+        "common.model.seed": "seed",
+        "common.model.wfile": "wfile",
+        "common.model.wfolder": "wfolder",
+        "server.protocol.name": "protocol",
+        "server.protocol.pad_ratio": "pad_ratio",
+        "client.verify": "verify",
+    }
     cfg = apply_args(cfg, args, mapping)
     common = cfg.common
     set_config(cfg)
-
-    # late imports so that the protocol variant is chosen from the final config
-    from models import registry
-
-    inshape, model = registry.load(common.model, seed=common.seed, wfile=common.wfile or None, device=common.device)
-    print("Model loaded: {} on {}".format(common.model, common.device))
 
     try:  # Pyfhel is optional; only needed with use_he
         from Pyfhel import Pyfhel
@@ -63,11 +67,25 @@ def main():
         he = None
 
     if args.mode == "server":
+        # late imports so that the protocol variant is chosen from the final config
+        from models import registry
         from src.system.runner import run_server
-        run_server(common.host, common.port, model, inshape, common.n)
+
+        model_cfg = common.model
+        inshape, model = registry.load(
+            model_cfg.name,
+            seed=model_cfg.seed,
+            wfile=model_cfg.wfile or None,
+            wfolder=model_cfg.wfolder or None,
+            device=common.device,
+        )
+        print("Model loaded: {} on {}".format(model_cfg.name, common.device))
+        run_server(common.host, common.port, model, inshape, common.n,
+                   model_name=model_cfg.name)
     else:
         from src.system.runner import run_client
-        run_client(common.host, common.port, model, inshape, he,
+
+        run_client(common.host, common.port, he,
                    dataset=None, n=common.n, verify=cfg.client.verify)
 
 

@@ -3,14 +3,16 @@
 ``config.toml`` at the project root is the default config file; a custom path
 can be passed via ``--config``. One file drives both roles:
 
-- ``[common]`` - shared settings (host, port, device, model, protocol, HE, ...).
+- ``[common]`` - shared settings (host, port, device, HE, n).
+- ``[common.model]`` - model name / seed / weights search path.
 - ``[client]`` - client settings.
-- ``[server]`` - server settings.
+- ``[server]`` - server settings; ``[server.protocol]`` holds the protocol
+  variant and its parameters.
 
 Command-line arguments take precedence over the file: config-backed args are
 built with ``default=argparse.SUPPRESS`` so only flags the user actually typed
 land in the namespace, and ``apply_args`` copies them over the merged config
-(dotted paths like ``common.model``).
+(dotted paths like ``common.model.name``).
 """
 
 import argparse
@@ -25,23 +27,35 @@ DEFAULT_CONFIG_FILE = PROJECT_ROOT / "config.toml"
 
 
 @dataclass
-class CommonConfig:
-    host: str = "127.0.0.1"
-    port: int = 8100
-    device: str = "cpu"
-    model: str = "poc-1"
-    n: int = 1
+class ModelConfig:
+    name: str = "poc-1"
     seed: int = 0
-    # whether to use HE (Pyfhel) in the offline phase
-    use_he: bool = False
+    # weights file (state dict); empty = search wfolder, then registry default
+    wfile: str = ""
+    # default directory searched for <model_name>.pt / <model_name>.pth
+    wfolder: str = "pretrained"
+
+
+@dataclass
+class ProtocolConfig:
     # protocol variant: plaintext, scale, shuffle, pad, padshuffle,
     # scaleshuffle, padscaleshuffle, noise
-    protocol: str = "scale"
+    name: str = "scale"
     # pad ratio for the pad / padshuffle / padscaleshuffle protocols (0 = no
     # padding, 1 = as many pads as real elements)
     pad_ratio: float = 0.0
-    # weights file (state dict); empty = registry default / random weights
-    wfile: str = ""
+
+
+@dataclass
+class CommonConfig:
+    host: str = "127.0.0.1"
+    port: int = 8100
+    # device shared by the client and the server
+    device: str = "cpu"
+    n: int = 1
+    # whether to use HE (Pyfhel) in the offline phase
+    use_he: bool = False
+    model: ModelConfig = field(default_factory=ModelConfig)
 
 
 @dataclass
@@ -51,7 +65,7 @@ class ClientConfig:
 
 @dataclass
 class ServerConfig:
-    pass
+    protocol: ProtocolConfig = field(default_factory=ProtocolConfig)
 
 
 @dataclass

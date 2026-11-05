@@ -10,7 +10,7 @@ try:  # Pyfhel is optional; only needed when use_he is enabled
 except ImportError:  # pragma: no cover
     Pyfhel = None
 class LeakyReLUClient(LocalLayerClient):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel, device: str, lyr: torch.nn.Module) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel, lyr: torch.nn.Module, device: str) -> None:
         super().__init__(socket, ishape, oshape, he, device)
         self.layer = lyr
     

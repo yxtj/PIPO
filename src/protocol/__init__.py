@@ -12,7 +12,7 @@ def validate_protocol(name: str) -> str:
         )
     return name
 
-PROTOCOL = get_config().common.protocol
+PROTOCOL = get_config().server.protocol.name
 validate_protocol(PROTOCOL)
 
 if PROTOCOL == 'plaintext':

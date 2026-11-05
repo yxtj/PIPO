@@ -34,7 +34,7 @@ class ProtocolClient(ProBaseClient):
         super().setup(ishape, oshape)
         # no handshake: the client derives the pad count of the previous
         # layer's output from pad_ratio, exactly as the server computes it
-        self.kin = pad_count(int(np.prod(ishape)), get_config().common.pad_ratio)
+        self.kin = pad_count(int(np.prod(ishape)), get_config().server.protocol.pad_ratio)
         n = int(np.prod(ishape))
         self.r = self._gen_add_share_(kwargs.get('r'), (1, n + self.kin))
 
@@ -125,7 +125,7 @@ class ProtocolServer(ProBaseServer):
             self.rplast = gen_reverse_shuffle(last.p)
         self.s = self._gen_add_share_(s, oshape)
         if p is None:
-            ratio = get_config().common.pad_ratio
+            ratio = get_config().server.protocol.pad_ratio
             n = int(np.prod(oshape))
             self.k = pad_count(n, ratio)
             self.p = gen_shuffle((1, n + self.k), device=self.device) # permutes data + pads

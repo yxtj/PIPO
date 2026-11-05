@@ -2,16 +2,38 @@ import socket
 import torch
 import torch.nn as nn
 
+from src.comm.model_info import send_model_info
+from src.common.config import get_config
+from src.common.model_info import build_model_info
 from src.system import util
 
+
 class Server():
-    def __init__(self, socket: socket.socket, model: nn.Module, inshape: tuple):
+    def __init__(self, socket: socket.socket, model: nn.Module, inshape: tuple,
+                 model_name: str = None):
+        # Constructors stay side-effect free: no I/O, no shape analysis, no
+        # layer construction. setup() does all of that after construction.
         self.socket = socket
-        # model
         self.model = model
         self.inshape = inshape
-        # layers
-        self.layers, self.linears, self.shortcuts, self.locals = util.make_server_model(socket, model, inshape)
+        self.model_name = model_name
+        self.info = None
+        self.layers = []
+        self.linears = []
+        self.shortcuts = {}
+        self.locals = []
+        self.dependency = {}
+
+    def setup(self):
+        """Parse the model, send its info to the client, and build server layers."""
+        if self.model_name is None:
+            self.model_name = get_config().common.model.name
+        self.info = build_model_info(self.model, self.inshape)
+        send_model_info(self.socket, self.model_name, self.info)
+        print("Model info sent: {} ({} layers, input {})".format(
+            self.model_name, len(self.info.steps), tuple(self.inshape)))
+        self.layers, self.linears, self.shortcuts, self.locals = \
+            util.make_server_model(self.socket, self.model, self.inshape)
         print("Model loaded {} layers: {} linear layers, {} local layers, {} shortcut layers.".format(
             len(self.layers), len(self.linears), len(self.locals), len(self.shortcuts)))
         # for shortcut layer: {fm idx: [shortcut layer idx]}
@@ -22,9 +44,10 @@ class Server():
                     self.dependency[f].append(j)
                 else:
                     self.dependency[f] = [j]
-        # self.to_buffer = [v for k,v in self.shortcuts.items()]
-    
+
     def offline(self):
+        if self.info is None:
+            raise RuntimeError("Server.setup() must be called before offline()")
         last_non_local = util.find_last_non_local_layer(len(self.layers), self.locals)
         last_lyr = None
         data = None
@@ -45,10 +68,11 @@ class Server():
                         self.layers[j].update_offline(i, data)
 
     def online(self):
+        if self.info is None:
+            raise RuntimeError("Server.setup() must be called before online()")
         for i, lyr in enumerate(self.layers):
             data = lyr.online() # get the input of this layer (i-th intermediate result)
             if i in self.dependency:
                 for j in self.dependency[i]:
                     if j != i:
                         self.layers[j].update_online(i, data)
-        

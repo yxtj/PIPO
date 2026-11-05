@@ -10,6 +10,8 @@ defaults when ``wfile`` is empty.
 
 import torch
 
+from pathlib import Path
+
 from models import minionn, openpose, poc, resnet, resnet_cifar, vgg
 
 
@@ -61,18 +63,36 @@ def _builders() -> dict:
     return b
 
 
-def load(name: str, seed=None, wfile=None, device="cpu"):
+def resolve_weight_file(name: str, wfile: str | None = None, wfolder: str | None = None):
+    """Resolve the weights file for ``name``.
+
+    An explicit ``wfile`` wins; otherwise ``wfolder`` is searched for
+    ``<name>.pt`` and ``<name>.pth``. Returns ``None`` when none exists.
+    """
+    if wfile:
+        return wfile
+    if wfolder:
+        for suffix in (".pt", ".pth"):
+            path = Path(wfolder) / "{}{}".format(name, suffix)
+            if path.is_file():
+                return str(path)
+    return None
+
+
+def load(name: str, seed=None, wfile=None, wfolder="pretrained", device="cpu"):
     """Build the model registered under ``name``.
 
     ``seed`` seeds torch before building so random weights match between the
     client and the server. ``wfile`` (a state-dict file) is applied either by
-    the builder itself (openpose) or post-hoc via ``load_state_dict``.
+    the builder itself (openpose) or post-hoc via ``load_state_dict``. When
+    ``wfile`` is empty, ``<wfolder>/<name>.pt|.pth`` is used if present.
     """
     builders = _builders()
     if name not in builders:
         raise KeyError(f"Unknown model: {name}. Available models: {sorted(builders)}")
     if seed is not None:
         torch.manual_seed(seed)
+    wfile = resolve_weight_file(name, wfile, wfolder)
     inshape, builder = builders[name]
     if name.startswith("openpose-"):
         # openpose weights are loaded into the original op_impl model during
