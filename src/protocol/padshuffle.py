@@ -168,7 +168,7 @@ class ProtocolServer(ProBaseServer):
             self.p = 1
             self.k = 0
         pro = ProtocolServer(self.socket, self.stat, self.he, self.device)
-        pro.setup(self.ishape, pool_oshape, last=self.last, p=p_full, k=0, share_ctx=False)
+        pro.setup(self.ishape, pool_oshape, last=self.last, p=p_full, k=0)
         return pro
 
     def deshuflle_input(self, data: torch.Tensor) -> torch.Tensor:

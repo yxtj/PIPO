@@ -51,9 +51,10 @@ def main():
     common = cfg.common
     set_config(cfg)
 
-    # NoHEEngine when use_he is disabled; PyfhelEngine with generated keys on
-    # the client side otherwise (missing Pyfhel raises a clear ImportError)
-    he = create_he(init_keys=True)
+    # the client owns the keyed engine (NoHEEngine when use_he is disabled;
+    # missing Pyfhel raises a clear ImportError); the server builds its
+    # shared engine in Server.setup()
+    he = create_he(init_keys=True) if args.mode == "client" else None
 
     if args.mode == "server":
         # late imports so that the protocol variant is chosen from the final config

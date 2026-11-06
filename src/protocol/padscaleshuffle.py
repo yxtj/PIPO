@@ -191,7 +191,7 @@ class ProtocolServer(ProBaseServer):
             self.p = 1
         self.k = 0 # the pooled output carries no pads, only the permutation
         pro = ProtocolServer(self.socket, self.stat, self.he, self.device)
-        pro.setup(self.ishape, mp.shape, last=self.last, s=sp, m=mp, p=p_full, k=0, share_ctx=False)
+        pro.setup(self.ishape, mp.shape, last=self.last, s=sp, m=mp, p=p_full, k=0)
         return pro
 
     def deshuflle_input(self, data: torch.Tensor) -> torch.Tensor:

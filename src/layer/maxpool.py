@@ -27,7 +27,7 @@ class MaxPoolClient(LayerClient):
 
 
 class MaxPoolServer(LayerServer):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he: HEEngine, layer: torch.nn.Module, device: str) -> None:
         assert isinstance(layer, torch.nn.MaxPool2d)
         # kernel_size must be no greater than stride
         if isinstance(layer.kernel_size, int):
@@ -46,7 +46,7 @@ class MaxPoolServer(LayerServer):
             stride_shape = layer.stride
         assert ishape[-2]//stride_shape[0] == oshape[-2] and ishape[-1]//stride_shape[1] == oshape[-1]
         
-        super().__init__(socket, ishape, oshape, layer, device)
+        super().__init__(socket, ishape, oshape, he, layer, device)
         self.stride_shape = stride_shape
         # make a protocol for pooling (its output shape is the same as the input shape)
         self.protocol_pool = None # ProtocolServer(self.socket, self.stat, self.he, self.device)

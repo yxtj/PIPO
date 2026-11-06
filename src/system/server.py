@@ -1,10 +1,12 @@
 import socket
+import struct
 import torch
 import torch.nn as nn
 
 from src.comm.model_info import send_model_info
 from src.common.config import get_config
 from src.common.model_info import build_model_info
+from src.heutil import create_he
 from src.system import util
 
 
@@ -18,6 +20,7 @@ class Server():
         self.inshape = inshape
         self.model_name = model_name
         self.info = None
+        self.he = None
         self.layers = []
         self.linears = []
         self.shortcuts = {}
@@ -32,8 +35,14 @@ class Server():
         send_model_info(self.socket, self.model_name, self.info)
         print("Model info sent: {} ({} layers, input {})".format(
             self.model_name, len(self.info.steps), tuple(self.inshape)))
+        # one shared engine for all layers; the client sends its HE context
+        # once, right after receiving the model info (empty for NoHE)
+        self.he = create_he()
+        ctx_len = struct.unpack('!i', self.socket.recv(4))[0]
+        b_ctx = self.socket.recv(ctx_len)
+        self.he.from_bytes_context(b_ctx)
         self.layers, self.linears, self.shortcuts, self.locals = \
-            util.make_server_model(self.socket, self.model, self.inshape)
+            util.make_server_model(self.socket, self.model, self.inshape, self.he)
         print("Model loaded {} layers: {} linear layers, {} local layers, {} shortcut layers.".format(
             len(self.layers), len(self.linears), len(self.locals), len(self.shortcuts)))
         # for shortcut layer: {fm idx: [shortcut layer idx]}

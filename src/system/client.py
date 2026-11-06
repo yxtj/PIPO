@@ -1,3 +1,5 @@
+import struct
+
 from src.comm.model_info import recv_model_info
 from src.common.config import get_config
 from src.heutil import create_he
@@ -32,6 +34,10 @@ class Client():
                 "client inshape {} does not match server model info {}".format(
                     tuple(self._inshape), tuple(self.inshape)))
         device = get_config().common.device
+        # send the HE context once, right after the model info: the server
+        # reads it before building its layers (empty for the NoHE backend)
+        b_ctx = self.he.to_bytes_context()
+        self.socket.sendall(struct.pack('!i', len(b_ctx)) + b_ctx)
         self.layers, self.linears, self.shortcuts, self.locals = \
             util.make_client_model_from_info(self.socket, self.info, self.he, device)
         print("Model info received: {} ({} layers, input {})".format(

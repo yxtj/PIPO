@@ -182,7 +182,7 @@ def make_client_model_from_info(socket, info, he, device):
     return layers, linears, shortcuts, locals
 
 
-def make_server_model(socket, model, inshape):
+def make_server_model(socket, model, inshape, he):
     modules, sources = flat_layers(model)
     shapes = compute_shape(model, inshape)
     device = get_config().common.device
@@ -192,49 +192,49 @@ def make_server_model(socket, model, inshape):
     locals = [] # local layers
     for i, lyr in enumerate(modules):
         if isinstance(lyr, nn.Conv2d):
-            layers.append(layer.ConvServer(socket, shapes[i], shapes[i+1], lyr, device))
+            layers.append(layer.ConvServer(socket, shapes[i], shapes[i+1], he, lyr, device))
             linears.append(i)
         elif isinstance(lyr, nn.Linear):
-            layers.append(layer.FcServer(socket, shapes[i], shapes[i+1], lyr, device))
+            layers.append(layer.FcServer(socket, shapes[i], shapes[i+1], he, lyr, device))
             linears.append(i)
         elif isinstance(lyr, (nn.BatchNorm1d, nn.BatchNorm2d)):
-            layers.append(layer.BnServer(socket, shapes[i], shapes[i+1], lyr, device))
+            layers.append(layer.BnServer(socket, shapes[i], shapes[i+1], he, lyr, device))
             linears.append(i)
         elif isinstance(lyr, nn.ReLU):
-            layers.append(layer.ReLUServer(socket, shapes[i], shapes[i+1], lyr, device))
+            layers.append(layer.ReLUServer(socket, shapes[i], shapes[i+1], he, lyr, device))
             locals.append(i)
         elif isinstance(lyr, nn.Sigmoid):
-            layers.append(layer.SigmoidServer(socket, shapes[i], shapes[i+1], lyr, device))
+            layers.append(layer.SigmoidServer(socket, shapes[i], shapes[i+1], he, lyr, device))
             locals.append(i)
         elif isinstance(lyr, nn.LeakyReLU):
-            layers.append(layer.LeakyReLUServer(socket, shapes[i], shapes[i+1], lyr, device))
+            layers.append(layer.LeakyReLUServer(socket, shapes[i], shapes[i+1], he, lyr, device))
             locals.append(i)
         elif isinstance(lyr, nn.GELU):
-            layers.append(layer.GELUServer(socket, shapes[i], shapes[i+1], lyr, device))
+            layers.append(layer.GELUServer(socket, shapes[i], shapes[i+1], he, lyr, device))
             locals.append(i)
         elif isinstance(lyr, nn.MaxPool2d):
-            layers.append(layer.MaxPoolServer(socket, shapes[i], shapes[i+1], lyr, device))
+            layers.append(layer.MaxPoolServer(socket, shapes[i], shapes[i+1], he, lyr, device))
         elif isinstance(lyr, nn.AvgPool2d):
-            layers.append(layer.AvgPoolServer(socket, shapes[i], shapes[i+1], lyr, device))
+            layers.append(layer.AvgPoolServer(socket, shapes[i], shapes[i+1], he, lyr, device))
             linears.append(i)
         elif isinstance(lyr, nn.Flatten):
-            layers.append(layer.FlattenServer(socket, shapes[i], shapes[i+1], lyr, device))
+            layers.append(layer.FlattenServer(socket, shapes[i], shapes[i+1], he, lyr, device))
             locals.append(i)
         elif isinstance(lyr, JumpOp):
-            layers.append(layer.JumpServer(socket, shapes[i], shapes[i+1], lyr, device, srcs=sources[i], own=i))
+            layers.append(layer.JumpServer(socket, shapes[i], shapes[i+1], he, lyr, device, srcs=sources[i], own=i))
             scl[i] = list(sources[i])
         elif isinstance(lyr, AddOp):
-            layers.append(layer.AdditionServer(socket, shapes[i], shapes[i+1], lyr, device, srcs=sources[i], own=i))
+            layers.append(layer.AdditionServer(socket, shapes[i], shapes[i+1], he, lyr, device, srcs=sources[i], own=i))
             scl[i] = list(sources[i])
         elif isinstance(lyr, ConcatOp):
-            layers.append(layer.ConcatenationServer(socket, shapes[i], shapes[i+1], lyr, device, srcs=sources[i], own=i))
+            layers.append(layer.ConcatenationServer(socket, shapes[i], shapes[i+1], he, lyr, device, srcs=sources[i], own=i))
             scl[i] = list(sources[i])
         elif isinstance(lyr, nn.Identity):
-            layers.append(layer.IdentityServer(socket, shapes[i], shapes[i+1], lyr, device))
+            layers.append(layer.IdentityServer(socket, shapes[i], shapes[i+1], he, lyr, device))
             linears.append(i)
         elif isinstance(lyr, nn.Softmax):
             assert i == len(modules) - 1, "Softmax should be the last layer."
-            layers.append(layer.SoftmaxServer(socket, shapes[i], shapes[i+1], lyr, device))
+            layers.append(layer.SoftmaxServer(socket, shapes[i], shapes[i+1], he, lyr, device))
             locals.append(i)
         else:
             raise Exception("Unknown layer type: " + str(lyr))

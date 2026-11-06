@@ -13,9 +13,9 @@ class AvgPoolClient(LayerClient):
         
 
 class AvgPoolServer(LayerServer):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he: HEEngine, layer: torch.nn.Module, device: str) -> None:
         assert isinstance(layer, torch.nn.AvgPool2d)
-        super().__init__(socket, ishape, oshape, layer, device)
+        super().__init__(socket, ishape, oshape, he, layer, device)
     
     def offline(self) -> np.ndarray:
         t0 = time.time()

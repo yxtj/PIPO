@@ -19,10 +19,10 @@ class ShortCutClient(LayerClient):
 
 
 class ShortCutServer(LayerServer):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str,
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he: HEEngine, layer: torch.nn.Module, device: str,
                  srcs: list = None, own: int = None) -> None:
         assert isinstance(layer, (JumpOp, AddOp, ConcatOp))
-        super().__init__(socket, ishape, oshape, layer, device)
+        super().__init__(socket, ishape, oshape, he, layer, device)
         self.srcs = list(srcs) # source feature-map indices (absolute, incl. the own input fm)
         self.own = own # this layer's input fm index (== flat layer index)
         self.buff = {} # used and cleaned by offline/online only
@@ -64,10 +64,10 @@ class JumpClient(ShortCutClient):
 
 
 class JumpServer(ShortCutServer):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str, srcs=None, own=None) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he: HEEngine, layer: torch.nn.Module, device: str, srcs=None, own=None) -> None:
         assert isinstance(layer, JumpOp)
         assert len(srcs) == 1
-        super().__init__(socket, ishape, oshape, layer, device, srcs, own)
+        super().__init__(socket, ishape, oshape, he, layer, device, srcs, own)
 
     def _forward(self, data: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
         return data
@@ -93,10 +93,10 @@ class AdditionClient(ShortCutClient):
 
 
 class AdditionServer(ShortCutServer):
-    def __init__(self, socket, ishape, oshape, layer, device, srcs=None, own=None) -> None:
+    def __init__(self, socket, ishape, oshape, he, layer, device, srcs=None, own=None) -> None:
         assert isinstance(layer, AddOp)
         assert ishape == oshape
-        super().__init__(socket, ishape, oshape, layer, device, srcs, own)
+        super().__init__(socket, ishape, oshape, he, layer, device, srcs, own)
 
     def _forward(self, rm_i) -> torch.Tensor:
         # rm_i (the own input share) + the buffered shares of the other sources
@@ -132,9 +132,9 @@ class ConcatenationClient(ShortCutClient):
 
 
 class ConcatenationServer(ShortCutServer):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str, srcs=None, own=None) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he: HEEngine, layer: torch.nn.Module, device: str, srcs=None, own=None) -> None:
         assert isinstance(layer, ConcatOp)
-        super().__init__(socket, ishape, oshape, layer, device, srcs, own)
+        super().__init__(socket, ishape, oshape, he, layer, device, srcs, own)
         self.dim = layer.dim
 
     def _forward(self, rm_i) -> torch.Tensor:

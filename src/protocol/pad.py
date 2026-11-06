@@ -132,7 +132,7 @@ class ProtocolServer(ProBaseServer):
         pool_oshape = torch.kron(torch.ones(self.oshape, device=self.device), block).shape
         self.k = 0
         pro = ProtocolServer(self.socket, self.stat, self.he, self.device)
-        pro.setup(self.ishape, pool_oshape, last=self.last, k=0, share_ctx=False)
+        pro.setup(self.ishape, pool_oshape, last=self.last, k=0)
         return pro
 
     def depad_input(self, data: torch.Tensor) -> torch.Tensor:

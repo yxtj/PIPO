@@ -94,7 +94,7 @@ class ProtocolServer(ProBaseServer):
         mp = torch.kron(self.m, block) # kronecker product
         sp = torch.rand_like(mp)
         pro = ProtocolServer(self.socket, self.stat, self.he, self.device)
-        pro.setup(self.ishape, mp.shape, last=self.last, s=sp, m=mp, share_ctx=False)
+        pro.setup(self.ishape, mp.shape, last=self.last, s=sp, m=mp)
         return pro
 
     def recv_offline(self) -> Union[torch.Tensor, np.ndarray]:

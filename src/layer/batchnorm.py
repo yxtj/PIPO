@@ -11,14 +11,14 @@ class BnClient(LayerClient):
         super().__init__(socket, ishape, oshape, he, device)
 
 class BnServer(LayerServer):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he: HEEngine, layer: torch.nn.Module, device: str) -> None:
         assert isinstance(layer, (torch.nn.BatchNorm1d, torch.nn.BatchNorm2d))
         # inference-time BatchNorm is a fixed per-channel affine
         #   y = gamma * (x - running_mean) / sqrt(running_var + eps) + beta
         # batch statistics would be data-dependent and cannot be masked
         assert layer.running_mean is not None, \
             "BatchNorm requires tracked running statistics (eval-mode affine)."
-        super().__init__(socket, ishape, oshape, layer, device)
+        super().__init__(socket, ishape, oshape, he, layer, device)
         # offline must compute the linear (homogeneous) part only. Stripping
         # .bias (beta) is not enough: the -gamma*running_mean/std shift is not
         # stored in .bias and must not appear in the offline term either, so

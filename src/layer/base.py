@@ -6,7 +6,7 @@ import numpy as np
 from src.layer_basic import LayerCommon
 from src.protocol import ProtocolClient, ProtocolServer
 
-from src.heutil import HEEngine, create_he
+from src.heutil import HEEngine
 
 __all__ = ['LayerClient', 'LayerServer', 'LocalLayerClient', 'LocalLayerServer']
 
@@ -52,10 +52,9 @@ class LayerServer(LayerCommon):
     # semantic layer kind, interpreted by the protocol module
     ltype = 'linear'
 
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str) -> None:
-        # config-selected backend: an empty PyfhelEngine (context arrives via
-        # from_bytes_context during protocol setup) or NoHEEngine
-        he = create_he()
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he: HEEngine, layer: torch.nn.Module, device: str) -> None:
+        # he is the server-wide shared engine created in Server.setup(); the
+        # client-side context is injected once before layers are built
         super().__init__(socket, ishape, oshape, he, device)
         self.layer = layer
         self.protocol = ProtocolServer(socket, self.stat, self.he, device)
@@ -111,8 +110,8 @@ class LocalLayerClient(LayerClient):
 class LocalLayerServer(LayerServer):
     ltype = 'activation'
 
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, layer: torch.nn.Module, device: str) -> None:
-        super().__init__(socket, ishape, oshape, layer, device)
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he: HEEngine, layer: torch.nn.Module, device: str) -> None:
+        super().__init__(socket, ishape, oshape, he, layer, device)
         
     def offline(self) -> None:
         return

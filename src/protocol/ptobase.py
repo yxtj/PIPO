@@ -1,5 +1,4 @@
 import socket
-import struct
 import torch
 import numpy as np
 from typing import Union
@@ -90,10 +89,6 @@ class ProBaseClient(ProtocolBase):
 
     def setup(self, ishape:tuple, oshape:tuple, **kwargs) -> None:
         super().setup(ishape, oshape)
-        # share the HE context with the server (empty for the NoHE backend)
-        b_ctx = self.he.to_bytes_context()
-        self.socket.sendall(struct.pack('!i', len(b_ctx)) + b_ctx)
-        self.stat.byte_offline_send += 4 + len(b_ctx)
 
     def send_offline(self) -> None:
         raise NotImplementedError
@@ -131,16 +126,6 @@ class ProBaseServer(ProtocolBase):
         self.ltype = kwargs.get('ltype', 'linear')
         self.is_local_layer = kwargs.get('is_local_layer', False)
         self.is_last_layer = kwargs.get('is_last_layer', False)
-        # receive the client HE context (empty for the NoHE backend). Internal
-        # sub-protocols (e.g. pooling) share the socket and the engine with
-        # their parent protocol and must pass share_ctx=False: the client
-        # sends the context once per layer setup, so a second read here would
-        # desynchronize the byte stream and deadlock both sides.
-        if kwargs.pop('share_ctx', True):
-            ctx_len = struct.unpack('!i', self.socket.recv(4))[0]
-            b_ctx = self.socket.recv(ctx_len)
-            self.he.from_bytes_context(b_ctx)
-            self.stat.byte_offline_recv += 4 + ctx_len
 
     def gen_mpooling(self, stride_shape: tuple) -> ProtocolBase:
         raise NotImplementedError
