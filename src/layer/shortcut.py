@@ -7,10 +7,7 @@ import torch
 from src.model.dag_model import JumpOp, AddOp, ConcatOp
 from .base import LayerClient, LayerServer
 
-try:  # Pyfhel is optional; only needed when use_he is enabled
-    from Pyfhel import Pyfhel
-except ImportError:  # pragma: no cover
-    Pyfhel = None
+from src.heutil import HEEngine
 
 
 # abstract shortcut layer

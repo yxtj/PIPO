@@ -5,12 +5,9 @@ from typing import Union
 # import numpy as np
 import time
 import torch
-try:  # Pyfhel is optional; only needed when use_he is enabled
-    from Pyfhel import Pyfhel
-except ImportError:  # pragma: no cover
-    Pyfhel = None
+from src.heutil import HEEngine
 class LeakyReLUClient(LocalLayerClient):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel, lyr: torch.nn.Module, device: str) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he: HEEngine, lyr: torch.nn.Module, device: str) -> None:
         super().__init__(socket, ishape, oshape, he, device)
         self.layer = lyr
     

@@ -6,11 +6,6 @@ from typing import Union
 
 from src.system import util, Server, Client
 
-try:  # Pyfhel is optional; only needed by the client when use_he is enabled
-    from Pyfhel import Pyfhel
-except ImportError:  # pragma: no cover
-    Pyfhel = None
-
 
 def show_stat(layers, n):
     s_total, s_relu, s_linear, s_l_conv, s_l_fc, s_pool, s_sc = util.analyze_stat(layers, n)

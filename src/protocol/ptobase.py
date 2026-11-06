@@ -1,21 +1,13 @@
 import socket
+import struct
 import torch
 import numpy as np
-import struct
 from typing import Union
-import src.heutil as heutil
 
 import src.comm as comm
-from src.common.config import get_config
+from src.heutil import HEEngine
 from src.layer_basic.stat import Stat
 from .crypto import gen_add_share, gen_mul_share
-
-try:  # Pyfhel is optional; only needed when use_he is enabled
-    from Pyfhel import Pyfhel
-except ImportError:  # pragma: no cover
-    Pyfhel = None
-
-USE_HE = get_config().common.use_he
 
 NumberType = Union[int, float, torch.Tensor, np.ndarray]
 
@@ -23,21 +15,21 @@ NumberType = Union[int, float, torch.Tensor, np.ndarray]
 # The send/recv methods should be state-free functions.
 
 class ProtocolBase():
-    def __init__(self, s: socket.socket, stat: Stat, he: Pyfhel, device: str):
+    def __init__(self, s: socket.socket, stat: Stat, he: HEEngine, device: str):
         self.socket = s
         self.stat = stat
         self.he = he
         self.device = device
         self.ishape = None
         self.oshape = None
-        
+
     def setup(self, ishape:tuple, oshape:tuple, **kwargs) -> None:
         self.ishape = ishape
         self.oshape = oshape
 
     def send_online(self, data: torch.Tensor) -> None:
         raise NotImplementedError
-    
+
     def recv_online(self) -> torch.Tensor:
         raise NotImplementedError
 
@@ -45,10 +37,10 @@ class ProtocolBase():
 
     def to_bytes(self) -> bytes:
         return b''
-    
+
     def from_bytes(self, b: bytes) -> None:
         return None
-    
+
     # helpers for generating shares
 
     def _gen_add_share_(self, v: NumberType, shape: tuple) -> torch.Tensor:
@@ -67,7 +59,7 @@ class ProtocolBase():
         else:
             res = gen_add_share(shape, device=self.device)
         return res
-    
+
     def _gen_mul_share_(self, v: NumberType, shape: tuple) -> torch.Tensor:
         if v is not None:
             assert isinstance(v, (int, float, torch.Tensor, np.ndarray))
@@ -93,38 +85,30 @@ class ProtocolBase():
 
 # Client workflow: send -> recv
 class ProBaseClient(ProtocolBase):
-    def __init__(self, s: socket.socket, stat: Stat, he: Pyfhel, device: str='cpu'):
+    def __init__(self, s: socket.socket, stat: Stat, he: HEEngine, device: str='cpu'):
         super().__init__(s, stat, he, device)
-    
+
     def setup(self, ishape:tuple, oshape:tuple, **kwargs) -> None:
         super().setup(ishape, oshape)
-        if USE_HE:
-            b_ctx = self.he.to_bytes_context()
-            self.socket.sendall(struct.pack('!i', len(b_ctx)) + b_ctx)
-            self.stat.byte_offline_send += 4 + len(b_ctx)
+        # share the HE context with the server (empty for the NoHE backend)
+        b_ctx = self.he.to_bytes_context()
+        self.socket.sendall(struct.pack('!i', len(b_ctx)) + b_ctx)
+        self.stat.byte_offline_send += 4 + len(b_ctx)
 
     def send_offline(self) -> None:
         raise NotImplementedError
-    
+
     def recv_offline(self) -> torch.Tensor:
         raise NotImplementedError
-    
+
     def basic_send_offline(self, data: torch.Tensor) -> None:
-        if USE_HE:
-            # encrypt and send
-            data = heutil.encrypt(self.he, data)
-            nbyte = comm.send_he_matrix(self.socket, data, self.he)
-        else:
-            nbyte = comm.send_torch(self.socket, data)
+        data = self.he.encrypt(data)
+        nbyte = comm.send_chunk(self.socket, self.he.serialize_array(data))
         self.stat.byte_offline_send += nbyte
-    
+
     def basic_recv_offline(self) -> torch.Tensor:
-        if USE_HE:
-            # recv and decrypt
-            data, nbyte = comm.recv_he_matrix(self.socket, self.he)
-            data = heutil.decrypt(self.he, data)
-        else:
-            data, nbyte = comm.recv_torch(self.socket)
+        blob, nbyte = comm.recv_chunk(self.socket)
+        data = self.he.decrypt(self.he.deserialize_array(blob))
         data = data.to(self.device)
         self.stat.byte_offline_recv += nbyte
         return data
@@ -132,13 +116,13 @@ class ProBaseClient(ProtocolBase):
 
 # Server workflow: recv -> process -> send
 class ProBaseServer(ProtocolBase):
-    def __init__(self, s: socket.socket, stat: Stat, he: Pyfhel, device: str='cpu'):
+    def __init__(self, s: socket.socket, stat: Stat, he: HEEngine, device: str='cpu'):
         super().__init__(s, stat, he, device)
         self.last = None
         self.ltype = 'linear'
         self.is_local_layer = False
         self.is_last_layer = False
-    
+
     def setup(self, ishape: tuple, oshape: tuple, last: ProtocolBase=None, **kwargs) -> None:
         super().setup(ishape, oshape)
         self.last = last
@@ -147,36 +131,34 @@ class ProBaseServer(ProtocolBase):
         self.ltype = kwargs.get('ltype', 'linear')
         self.is_local_layer = kwargs.get('is_local_layer', False)
         self.is_last_layer = kwargs.get('is_last_layer', False)
-        if USE_HE:
-            len = struct.unpack('!i', self.socket.recv(4))[0]
-            b_ctx = self.socket.recv(len)
+        # receive the client HE context (empty for the NoHE backend). Internal
+        # sub-protocols (e.g. pooling) share the socket and the engine with
+        # their parent protocol and must pass share_ctx=False: the client
+        # sends the context once per layer setup, so a second read here would
+        # desynchronize the byte stream and deadlock both sides.
+        if kwargs.pop('share_ctx', True):
+            ctx_len = struct.unpack('!i', self.socket.recv(4))[0]
+            b_ctx = self.socket.recv(ctx_len)
             self.he.from_bytes_context(b_ctx)
-            self.stat.byte_offline_recv += 4 + len
+            self.stat.byte_offline_recv += 4 + ctx_len
 
     def gen_mpooling(self, stride_shape: tuple) -> ProtocolBase:
         raise NotImplementedError
 
     def send_offline(self, data: Union[torch.Tensor, np.ndarray]) -> None:
         raise NotImplementedError
-    
+
     def recv_offline(self) -> Union[torch.Tensor, np.ndarray]:
         raise NotImplementedError
 
     def basic_send_offline(self, data: Union[torch.Tensor, np.ndarray]) -> None:
-        if USE_HE:
-            # just send
-            nbyte = comm.send_he_matrix(self.socket, data, self.he)
-        else:
-            nbyte = comm.send_torch(self.socket, data)
+        nbyte = comm.send_chunk(self.socket, self.he.serialize_array(data))
         self.stat.byte_offline_send += nbyte
-    
+
     def basic_recv_offline(self) -> Union[torch.Tensor, np.ndarray]:
-        if USE_HE:
-            # just recv
-            data, nbyte = comm.recv_he_matrix(self.socket, self.he)
-        else:
-            data, nbyte = comm.recv_torch(self.socket)
-        data = data.to(self.device)
+        blob, nbyte = comm.recv_chunk(self.socket)
+        data = self.he.deserialize_array(blob)
+        if isinstance(data, torch.Tensor):
+            data = data.to(self.device)
         self.stat.byte_offline_recv += nbyte
         return data
-    

@@ -47,14 +47,31 @@ class ProtocolConfig:
 
 
 @dataclass
+class HEBackendPyfhelConfig:
+    # Pyfhel CKKS context parameters, only read by the 'pyfhel' backend
+    n: int = 8192
+    scale: int = 2 ** 30
+    qi_sizes: list = field(default_factory=lambda: [30] * 5)
+
+
+@dataclass
+class HEConfig:
+    # HE backend selected when use_he is enabled: "none" | "pyfhel";
+    # per-backend parameters live in their own subsection ([common.he.pyfhel])
+    backend: str = "pyfhel"
+    pyfhel: HEBackendPyfhelConfig = field(default_factory=HEBackendPyfhelConfig)
+
+
+@dataclass
 class CommonConfig:
     host: str = "127.0.0.1"
     port: int = 8100
     # device shared by the client and the server
     device: str = "cpu"
     n: int = 1
-    # whether to use HE (Pyfhel) in the offline phase
+    # whether to use HE in the offline phase (backend via common.he)
     use_he: bool = False
+    he: HEConfig = field(default_factory=HEConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
 
 
@@ -116,8 +133,9 @@ def apply_args(config: Config, args: argparse.Namespace, mapping: dict[str, str]
 
 
 # The effective config is set by the entry point (after CLI overrides are
-# applied) and read by library modules (protocol dispatch, layer base) that
-# need USE_HE / PROTOCOL without going through main().
+# applied) and read by library modules (protocol dispatch, layer base, the HE
+# engine factory) that need the HE backend / protocol variant without going
+# through main().
 _config: Config | None = None
 
 

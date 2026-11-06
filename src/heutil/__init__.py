@@ -1,5 +1,6 @@
 # homomorphic encryption
 
-from .encoding import *
+from .engine import HEEngine, create_he
 
-from .compute import *
+from .engine_none import NoHEEngine
+from .engine_pyfhel import PyfhelEngine

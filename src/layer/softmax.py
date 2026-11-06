@@ -5,12 +5,9 @@ from typing import Union
 # import numpy as np
 import time
 import torch
-try:  # Pyfhel is optional; only needed when use_he is enabled
-    from Pyfhel import Pyfhel
-except ImportError:  # pragma: no cover
-    Pyfhel = None
+from src.heutil import HEEngine
 class SoftmaxClient(LocalLayerClient):
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he:Pyfhel, device: str,
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he: HEEngine, device: str,
                  lyr: torch.nn.Module = None) -> None:
         super().__init__(socket, ishape, oshape, he, device)
         self.layer = lyr if lyr is not None else torch.nn.Softmax(1)

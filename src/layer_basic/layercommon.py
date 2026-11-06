@@ -5,14 +5,11 @@ from socket import socket
 
 from .stat import Stat
 
-try:  # Pyfhel is optional; only used as a type hint here
-    from Pyfhel import Pyfhel
-except ImportError:  # pragma: no cover
-    Pyfhel = None
+from src.heutil import HEEngine
 
 
 class LayerCommon():
-    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he: Pyfhel, device: str) -> None:
+    def __init__(self, socket: socket, ishape: tuple, oshape: tuple, he: HEEngine, device: str) -> None:
         self.socket = socket
         self.ishape = ishape
         self.oshape = oshape

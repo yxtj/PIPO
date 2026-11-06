@@ -5,9 +5,9 @@ come from config.toml / CLI arguments.
 """
 
 import argparse
-import sys
 
 from src.common.config import apply_args, load_config, set_config
+from src.heutil import create_he
 
 
 def parse_args() -> argparse.Namespace:
@@ -51,20 +51,9 @@ def main():
     common = cfg.common
     set_config(cfg)
 
-    try:  # Pyfhel is optional; only needed with use_he
-        from Pyfhel import Pyfhel
-        has_pyfhel = True
-    except ImportError:
-        has_pyfhel = False
-    if common.use_he:
-        if not has_pyfhel:
-            print("Error: use_he is enabled but Pyfhel is not installed.")
-            sys.exit(1)
-        he = Pyfhel()
-        he.contextGen(scheme="ckks", n=2**13, scale=2**30, qi_sizes=[30]*5)
-        he.keyGen()
-    else:
-        he = None
+    # NoHEEngine when use_he is disabled; PyfhelEngine with generated keys on
+    # the client side otherwise (missing Pyfhel raises a clear ImportError)
+    he = create_he(init_keys=True)
 
     if args.mode == "server":
         # late imports so that the protocol variant is chosen from the final config

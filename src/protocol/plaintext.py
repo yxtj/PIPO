@@ -6,16 +6,13 @@ import torch
 import time
 import numpy as np
 import src.comm as comm
-try:  # Pyfhel is optional; only needed when use_he is enabled
-    from Pyfhel import Pyfhel
-except ImportError:  # pragma: no cover
-    Pyfhel = None
+from src.heutil import HEEngine
 from src.layer_basic.stat import Stat
 
 __ALL__ = ['ProtocolClient', 'ProtocolServer']
 
 class ProtocolClient(ProBaseClient):
-    def __init__(self, s: socket.socket, stat: Stat, he: Pyfhel, device: str='cpu'):
+    def __init__(self, s: socket.socket, stat: Stat, he: HEEngine, device: str='cpu'):
         super().__init__(s, stat, he, device)
     
     def setup(self, ishape:tuple, oshape:tuple, **kwargs) -> None:
@@ -54,7 +51,7 @@ class ProtocolClient(ProBaseClient):
 
 
 class ProtocolServer(ProBaseServer):
-    def __init__(self, s: socket.socket, stat: Stat, he: Pyfhel, device: str='cpu'):
+    def __init__(self, s: socket.socket, stat: Stat, he: HEEngine, device: str='cpu'):
         super().__init__(s, stat, he, device)
     
     def setup(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None, **kwargs) -> None:

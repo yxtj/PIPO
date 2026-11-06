@@ -1,5 +1,6 @@
 from src.comm.model_info import recv_model_info
 from src.common.config import get_config
+from src.heutil import create_he
 from src.system import util
 
 
@@ -10,7 +11,8 @@ class Client():
         self.socket = socket
         self.model = model
         self._inshape = inshape
-        self.he = he
+        # a None engine (e.g. tests) falls back to the config-selected backend
+        self.he = he if he is not None else create_he()
         self.model_name = None
         self.info = None
         self.inshape = None

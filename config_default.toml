@@ -29,10 +29,22 @@ n = 1
 # the same model, so they must agree -- otherwise --verify compares against a
 # different set of weights.
 seed = 0
-# Use homomorphic encryption (Pyfhel CKKS) in the offline phase. Requires
-# Pyfhel to be installed; the CKKS context is hard-coded in src/main.py
-# (n=2**13, scale=2**30, qi_sizes=[30]*5).
+# Use homomorphic encryption in the offline phase. The backend is picked by
+# [common.he] backend ("none" | "pyfhel") and its parameters live in
+# [common.he.pyfhel] (CKKS: n, scale, qi_sizes).
 use_he = false
+
+[common.he]
+# HE backend used when use_he = true: "none" | "pyfhel". "none" treats the
+# offline data as plaintext end to end (identity encryption, plain float
+# serialization); "pyfhel" uses the Pyfhel CKKS library.
+backend = "pyfhel"
+
+[common.he.pyfhel]
+# CKKS context parameters, only read by the "pyfhel" backend.
+n = 8192                  # polynomial modulus degree (2**13)
+scale = 1073741824        # float -> fixed-point scale (2**30)
+qi_sizes = [30, 30, 30, 30, 30]  # bits of each prime in the modulus chain
 # Inference protocol variant: plaintext | scale | shuffle | noise
 #   plaintext - no masking at all; correctness baseline only
 #   scale     - secret sharing + multiplicative blinding (PIPO, ICDCS 2024)
