@@ -149,3 +149,19 @@ def get_config() -> Config:
     if _config is None:
         _config = load_config()
     return _config
+
+
+def he_engine_args(cfg: Config) -> tuple:
+    """(backend, params) for heutil.create_he, resolved from the config.
+
+    use_he=False maps to the 'none' backend; otherwise common.he.backend is
+    returned, together with the pyfhel context parameters when applicable.
+    Keeping this mapping here (not in heutil) is what lets the engine package
+    stay config-free.
+    """
+    if not cfg.common.use_he:
+        return "none", None
+    backend = cfg.common.he.backend
+    p = cfg.common.he.pyfhel
+    params = {"n": p.n, "scale": p.scale, "qi_sizes": list(p.qi_sizes)} if backend == "pyfhel" else None
+    return backend, params

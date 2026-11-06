@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from src.comm.model_info import send_model_info
-from src.common.config import get_config
+from src.common.config import get_config, he_engine_args
 from src.common.model_info import build_model_info
 from src.heutil import create_he
 from src.system import util
@@ -35,9 +35,10 @@ class Server():
         send_model_info(self.socket, self.model_name, self.info)
         print("Model info sent: {} ({} layers, input {})".format(
             self.model_name, len(self.info.steps), tuple(self.inshape)))
-        # one shared engine for all layers; the client sends its HE context
-        # once, right after receiving the model info (empty for NoHE)
-        self.he = create_he()
+        # one shared engine for all layers, backend/params resolved from the
+        # config here; the client sends its HE context once, right after
+        # receiving the model info (empty for NoHE)
+        self.he = create_he(*he_engine_args(get_config()))
         ctx_len = struct.unpack('!i', self.socket.recv(4))[0]
         b_ctx = self.socket.recv(ctx_len)
         self.he.from_bytes_context(b_ctx)

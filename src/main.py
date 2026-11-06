@@ -6,7 +6,7 @@ come from config.toml / CLI arguments.
 
 import argparse
 
-from src.common.config import apply_args, load_config, set_config
+from src.common.config import apply_args, he_engine_args, load_config, set_config
 from src.heutil import create_he
 
 
@@ -51,10 +51,13 @@ def main():
     common = cfg.common
     set_config(cfg)
 
-    # the client owns the keyed engine (NoHEEngine when use_he is disabled;
-    # missing Pyfhel raises a clear ImportError); the server builds its
-    # shared engine in Server.setup()
-    he = create_he(init_keys=True) if args.mode == "client" else None
+    # the client owns the keyed engine; the server builds its shared engine
+    # in Server.setup(). Both resolve the backend/params from the config via
+    # he_engine_args; missing Pyfhel raises a clear ImportError.
+    he = None
+    if args.mode == "client":
+        backend, params = he_engine_args(cfg)
+        he = create_he(backend, params=params, init_keys=True)
 
     if args.mode == "server":
         # late imports so that the protocol variant is chosen from the final config

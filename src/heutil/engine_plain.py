@@ -6,7 +6,7 @@ import torch
 from .engine import _DTYPE_FLOAT32, _DTYPE_FLOAT64, HEEngine
 
 
-class NoHEEngine(HEEngine):
+class PlainEngine(HEEngine):
     """Complete no-encryption backend: identity crypto and plain float
     serialization, so callers need no special casing."""
 

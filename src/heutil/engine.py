@@ -2,9 +2,10 @@
 
 `HEEngine` is the interface used by the layer / protocol / comm modules; the
 backends live in sibling modules (`engine_none.NoHEEngine`,
-`engine_pyfhel.PyfhelEngine`) and `create_he` picks one from the effective
-config (or explicit arguments), so new backends (e.g. OpenFHE) plug in
-without touching callers.
+`engine_pyfhel.PyfhelEngine`) and `create_he` dispatches on an explicit
+backend name. Config reading stays with the callers (e.g. src/system), so
+this package depends on nothing outside numpy/torch/struct and new backends
+(e.g. OpenFHE) plug in without touching callers.
 
 Type conventions:
 - plaintext  : torch.Tensor (the online/offline data flow is torch-based)
@@ -115,28 +116,19 @@ class HEEngine:
         return shape, dtype_code, elem_len, offset
 
 
-def create_he(backend: str = None, enabled: bool = None,
-              params: dict = None, init_keys: bool = False) -> HEEngine:
-    """Build the HE engine from explicit arguments or the effective config.
+def create_he(backend: str, params: dict = None, init_keys: bool = False) -> HEEngine:
+    """Build the engine for the named backend; all policy decisions (which
+    backend, which parameters) belong to the caller.
 
-    enabled defaults to common.use_he; backend defaults to common.he.backend.
-    enabled=False always yields NoHEEngine; backend='none' does the same even
-    when enabled (use_he=True + backend='none' is treated as no encryption).
+    backend: 'none' -> PlainEngine (no encryption), 'pyfhel' -> PyfhelEngine.
+    params is the CKKS context parameter dict (scheme/n/scale/qi_sizes),
+    only read by the 'pyfhel' backend; init_keys additionally generates the
+    context and keys (client side).
     """
-    from src.common.config import get_config
-
-    cfg = get_config()
-    if enabled is None:
-        enabled = cfg.common.use_he
-    if backend is None:
-        backend = cfg.common.he.backend
-    if not enabled or backend == "none":
-        from .engine_none import NoHEEngine
-        return NoHEEngine()
+    if backend == "none":
+        from .engine_plain import PlainEngine
+        return PlainEngine()
     if backend == "pyfhel":
         from .engine_pyfhel import PyfhelEngine
-        if params is None:
-            p = cfg.common.he.pyfhel
-            params = {"n": p.n, "scale": p.scale, "qi_sizes": list(p.qi_sizes)}
         return PyfhelEngine(params=params, init_keys=init_keys)
     raise ValueError("unknown HE backend: {!r} (expected 'none' or 'pyfhel')".format(backend))
