@@ -12,15 +12,22 @@ from src.heutil import create_he
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="pipo", description="PIPO privacy-preserving inference")
-    parser.add_argument("mode", choices=["server", "client"], help="run as server or client")
+    parser.add_argument("mode", nargs="?", default="server", choices=["server", "client"],
+                        help="run as server or client (ignored with --mode offline)")
     parser.add_argument("--config", default=None, help="config file (default: config.toml)")
+    parser.add_argument("--mode", dest="run_mode", default=argparse.SUPPRESS,
+                        choices=["offline", "standard", "online"],
+                        help="run mode: offline (generate offline resources), "
+                             "standard (offline + online), online (restore offline resources)")
     for flag, dest in [
         ("--host", "host"), ("--port", "port"), ("--device", "device"),
         ("--model", "model"), ("--n", "n"), ("--seed", "seed"),
         ("--wfile", "wfile"), ("--wfolder", "wfolder"),
         ("--protocol", "protocol"), ("--pad-ratio", "pad_ratio"),
+        ("--res-dir", "res_dir"), ("--res-index", "res_index"), ("--res-count", "res_count"),
     ]:
-        converter = {"port": int, "n": int, "seed": int, "pad_ratio": float}.get(dest)
+        converter = {"port": int, "n": int, "seed": int, "pad_ratio": float,
+                     "res_index": int, "res_count": int}.get(dest)
         if converter:
             parser.add_argument(flag, default=argparse.SUPPRESS, type=converter)
         else:
@@ -38,28 +45,56 @@ def main():
         "common.port": "port",
         "common.device": "device",
         "common.n": "n",
+        "common.mode": "run_mode",
         "common.use_he": "use_he",
         "common.model.name": "model",
         "common.model.seed": "seed",
         "common.model.wfile": "wfile",
         "common.model.wfolder": "wfolder",
+        "common.offline.dir": "res_dir",
+        "common.offline.index": "res_index",
         "server.protocol.name": "protocol",
         "server.protocol.pad_ratio": "pad_ratio",
         "client.verify": "verify",
     }
     cfg = apply_args(cfg, args, mapping)
     common = cfg.common
+    run_mode = common.mode
+    if run_mode not in ("offline", "standard", "online"):
+        raise ValueError(
+            "invalid run mode {!r} (expected offline | standard | online)".format(run_mode))
     set_config(cfg)
 
     # the client owns the keyed engine; the server builds its shared engine
     # in Server.setup(). Both resolve the backend/params from the config via
-    # he_engine_args; missing Pyfhel raises a clear ImportError.
+    # he_engine_args; missing Pyfhel raises a clear ImportError. The offline
+    # generation mode plays the client role inside this process, so it needs
+    # the keyed engine as well.
     he = None
-    if args.mode == "client":
+    if args.mode == "client" or run_mode == "offline":
         backend, params = he_engine_args(cfg)
         he = create_he(backend, params=params, init_keys=True)
 
-    if args.mode == "server":
+    if run_mode == "offline":
+        # single process playing both roles over a socket pair: generate and
+        # persist offline resource sets (the positional role is ignored)
+        from models import registry
+        from src.system.runner import run_offline
+
+        model_cfg = common.model
+        inshape, model = registry.load(
+            model_cfg.name,
+            seed=model_cfg.seed,
+            wfile=model_cfg.wfile or None,
+            wfolder=model_cfg.wfolder or None,
+            device=common.device,
+        )
+        print("Model loaded: {} on {}".format(model_cfg.name, common.device))
+        run_offline(model, inshape, model_name=model_cfg.name,
+                    res_dir=common.offline.dir,
+                    res_index=common.offline.index or None,
+                    res_count=getattr(args, "res_count", None) or 1)
+    elif args.mode == "server":
         # late imports so that the protocol variant is chosen from the final config
         from models import registry
         from src.system.runner import run_server

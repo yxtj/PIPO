@@ -14,6 +14,12 @@ NumberType = Union[int, float, torch.Tensor, np.ndarray]
 # The send/recv methods should be state-free functions.
 
 class ProtocolBase():
+    # Offline-resource fields persisted by save_res() and restored by passing
+    # them back as setup() kwargs; each protocol class declares its own list.
+    # Derived fields (mlast / rplast / mp / kin) are intentionally absent:
+    # setup() recomputes them from the restored values and the previous layer.
+    res_fields = ()
+
     def __init__(self, s: socket.socket, stat: Stat, he: HEEngine, device: str):
         self.socket = s
         self.stat = stat
@@ -39,6 +45,27 @@ class ProtocolBase():
 
     def from_bytes(self, b: bytes) -> None:
         return None
+
+    # helpers for persisting / restoring offline resources
+
+    def save_res(self) -> dict:
+        """Snapshot the offline-resource fields (tensors moved to cpu)."""
+        state = {}
+        for f in self.res_fields:
+            v = getattr(self, f)
+            state[f] = v.detach().cpu() if torch.is_tensor(v) else v
+        return state
+
+    def res_kwargs(self, state: dict) -> dict:
+        """Pick the persisted fields out of a loaded resource dict as setup()
+        kwargs (tensors moved to this protocol's device)."""
+        kwargs = {}
+        for f in self.res_fields:
+            if f not in state or state[f] is None:
+                continue
+            v = state[f]
+            kwargs[f] = v.to(self.device) if torch.is_tensor(v) else v
+        return kwargs
 
     # helpers for generating shares
 
@@ -89,6 +116,11 @@ class ProBaseClient(ProtocolBase):
 
     def setup(self, ishape:tuple, oshape:tuple, **kwargs) -> None:
         super().setup(ishape, oshape)
+        # restore a persisted offline value for `pre` (normally received
+        # during the offline interaction; without a resource it stays None)
+        pre = kwargs.get('pre')
+        if pre is not None:
+            self.pre = pre.to(self.device)
 
     def send_offline(self) -> None:
         raise NotImplementedError

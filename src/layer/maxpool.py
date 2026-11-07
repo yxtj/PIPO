@@ -50,12 +50,34 @@ class MaxPoolServer(LayerServer):
         self.stride_shape = stride_shape
         # make a protocol for pooling (its output shape is the same as the input shape)
         self.protocol_pool = None # ProtocolServer(self.socket, self.stat, self.he, self.device)
-    
+        # persisted values of the pooling sub-protocol, consumed by setup()
+        # when restoring offline resources (run mode 'online')
+        self._pool_res = None
+
     def setup(self, last_lyr: LayerServer, is_last_layer: bool=False, **kwargs) -> None:
         super().setup(last_lyr, is_last_layer=is_last_layer, **kwargs)
         t = time.time()
-        self.protocol_pool = self.protocol.gen_mpooling(self.stride_shape)
+        self.protocol_pool = self.protocol.gen_mpooling(self.stride_shape, self._pool_res)
+        self._pool_res = None
         self.stat.time_offline += time.time() - t
+
+    def save_res(self) -> dict:
+        # both protocol objects carry offline state: self.protocol holds the
+        # propagated values for the next layer (p_block / k / m), while
+        # protocol_pool drives the pooling exchange itself
+        res = super().save_res()
+        res["protocol_pool"] = self.protocol_pool.save_res()
+        return res
+
+    def setup_res(self, last_lyr: LayerServer, is_last_layer: bool, entry: dict) -> None:
+        # gen_mpooling runs inside setup(): it must reuse the persisted pool
+        # values (s / p_full) instead of drawing fresh randomness
+        self._pool_res = entry.get('protocol_pool') or {}
+        try:
+            self.setup(last_lyr, is_last_layer=is_last_layer,
+                       **self.protocol.res_kwargs(entry.get('protocol') or {}))
+        finally:
+            self._pool_res = None
         
     def cut_input(self, x: Union[torch.Tensor, np.ndarray]) -> Union[torch.Tensor, np.ndarray]:
         h = self.oshape[-2] * self.stride_shape[0]

@@ -21,6 +21,8 @@ __ALL__ = ['ProtocolClient', 'ProtocolServer']
 
 
 class ProtocolClient(ProBaseClient):
+    res_fields = ('r', 'pre')
+
     def __init__(self, s: socket.socket, stat: Stat, he: HEEngine, device: str='cpu'):
         super().__init__(s, stat, he, device)
         self.r = None
@@ -79,6 +81,8 @@ class ProtocolClient(ProBaseClient):
 
 
 class ProtocolServer(ProBaseServer):
+    res_fields = ('s', 'k')
+
     def __init__(self, s: socket.socket, stat: Stat, he: HEEngine, device: str='cpu'):
         super().__init__(s, stat, he, device)
         self.s = None
@@ -120,19 +124,25 @@ class ProtocolServer(ProBaseServer):
         else:
             self.k = pad_count(int(np.prod(oshape)), get_config().server.protocol.pad_ratio)
 
-    def gen_mpooling(self, stride_shape: tuple) -> ProBaseServer:
+    def gen_mpooling(self, stride_shape: tuple, pool_res: dict = None) -> ProBaseServer:
         # Pure pad has no permutation to protect pooling, so the pooling
         # sub-protocol stays clean: the previous layer's pads are dropped by
         # this protocol's recv_*, and the client pools on an unpermuted
         # masked tensor. Its output carries no pads (k = 0), which this
         # protocol propagates as the pending pad count for the next layer.
+        # pool_res carries the persisted additive share of the pooling
+        # sub-protocol (mode=online).
+        pool_res = pool_res or {}
         block = torch.ones(stride_shape, device=self.device)
         # pooling output shape: each spatial dim scaled by the stride (the
         # ones tensor only carries the shape)
         pool_oshape = torch.kron(torch.ones(self.oshape, device=self.device), block).shape
         self.k = 0
+        sp = pool_res.get('s')
+        if sp is not None:
+            sp = sp.to(self.device)
         pro = ProtocolServer(self.socket, self.stat, self.he, self.device)
-        pro.setup(self.ishape, pool_oshape, last=self.last, k=0)
+        pro.setup(self.ishape, pool_oshape, last=self.last, s=sp, k=0)
         return pro
 
     def depad_input(self, data: torch.Tensor) -> torch.Tensor:

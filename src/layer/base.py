@@ -25,6 +25,16 @@ class LayerClient(LayerCommon):
         t = time.time()
         self.protocol.setup(self.ishape, self.oshape, ltype=self.ltype, **kwargs)
         self.stat.time_offline += time.time() - t
+
+    def save_res(self) -> dict:
+        """Persisted offline resources of this layer (offline_res files)."""
+        return {"protocol": self.protocol.save_res()}
+
+    def setup_res(self, entry: dict) -> None:
+        """setup() with restored offline resources (run mode 'online'):
+        the saved values are passed through setup kwargs, so every protocol
+        honors them exactly as in a fresh offline run."""
+        self.setup(**self.protocol.res_kwargs(entry.get('protocol') or {}))
     
     def offline(self) -> None:
         t0 = time.time()
@@ -72,6 +82,18 @@ class LayerServer(LayerCommon):
             **kwargs,
         )
         self.stat.time_offline += time.time() - t
+
+    def save_res(self) -> dict:
+        """Persisted offline resources of this layer (offline_res files)."""
+        return {"protocol": self.protocol.save_res()}
+
+    def setup_res(self, last_lyr: LayerCommon, is_last_layer: bool, entry: dict) -> None:
+        """setup() with restored offline resources (run mode 'online'): the
+        saved values are passed through setup kwargs, so every protocol
+        honors them exactly as in a fresh offline run (and the layer-to-layer
+        propagation of mlast / rplast / kin is recomputed by setup itself)."""
+        self.setup(last_lyr, is_last_layer=is_last_layer,
+                   **self.protocol.res_kwargs(entry.get('protocol') or {}))
     
     def offline(self) -> np.ndarray:
         '''

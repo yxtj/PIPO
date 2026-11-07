@@ -18,6 +18,7 @@ class Client():
         self.model_name = None
         self.info = None
         self.inshape = None
+        self.offline_res = None # resource set index announced by the server
         self.layers = []
         self.linears = []
         self.shortcuts = {}
@@ -29,6 +30,7 @@ class Client():
         self.model_name = message.model_name
         self.info = message.info
         self.inshape = self.info.inshape
+        self.offline_res = message.offline_res
         if self._inshape is not None and tuple(self._inshape) != tuple(self.inshape):
             raise ValueError(
                 "client inshape {} does not match server model info {}".format(
@@ -43,12 +45,25 @@ class Client():
         print("Model info received: {} ({} layers, input {})".format(
             self.model_name, len(self.layers), tuple(self.inshape)))
 
+    def setup_layers(self, res: list = None):
+        """Per-layer protocol setup. With res (the layer entries of a loaded
+        resource set, run mode 'online') the persisted masks replace fresh
+        randomness through setup kwargs."""
+        if self.info is None:
+            raise RuntimeError("Client.setup() must be called before setup_layers()")
+        for i, lyr in enumerate(self.layers):
+            print('  setup {}: {} ...'.format(i, lyr.__class__.__name__))
+            if res is not None:
+                lyr.setup_res(res[i])
+            else:
+                lyr.setup()
+
     def offline(self):
         if self.info is None:
             raise RuntimeError("Client.setup() must be called before offline()")
+        self.setup_layers()
         for i, lyr in enumerate(self.layers):
             print('  offline {}: {} ...'.format(i, lyr.__class__.__name__))
-            lyr.setup()
             lyr.offline()
 
     def online(self, data):

@@ -14,6 +14,8 @@ __ALL__ = ['ProtocolClient', 'ProtocolServer']
 
 
 class ProtocolClient(ProBaseClient):
+    res_fields = ('r', 'pre')
+
     def __init__(self, s: socket.socket, stat: Stat, he: HEEngine, device: str='cpu'):
         super().__init__(s, stat, he, device)
         self.r = None
@@ -61,6 +63,8 @@ class ProtocolClient(ProBaseClient):
 
 
 class ProtocolServer(ProBaseServer):
+    res_fields = ('s', 'p')
+
     def __init__(self, s: socket.socket, stat: Stat, he: HEEngine, device: str='cpu'):
         super().__init__(s, stat, he, device)
         self.rplast = None
@@ -104,7 +108,7 @@ class ProtocolServer(ProBaseServer):
             self.p = p
         # self.rp = torch.argsort(self.p.ravel()).reshape(self.ishape) # unshuffle matrix
 
-    def gen_mpooling(self, stride_shape: tuple) -> ProBaseServer:
+    def gen_mpooling(self, stride_shape: tuple, pool_res: dict = None) -> ProBaseServer:
         # Block-wise shuffle is the default for pooling: the previous layer's
         # full permutation is undone first (protocol_pool.rplast), then a
         # block-wise one is applied -- the stride-sized block grid is permuted
@@ -114,6 +118,10 @@ class ProtocolServer(ProBaseServer):
         # invert it. When this protocol was asked for an unpermuted output
         # (p == 1, the last non-local layer) or the shape does not tile by the
         # stride, fall back to a clean, unpermuted tensor.
+        # pool_res carries the persisted values of the pooling sub-protocol
+        # (mode=online): its full permutation p; p_block is already restored
+        # in self.p through the layer's setup kwargs, so it is not redrawn.
+        pool_res = pool_res or {}
         block = torch.ones(stride_shape, device=self.device)
         # pooling output shape: each spatial dim scaled by the stride (the
         # ones tensor only carries the shape)
@@ -121,14 +129,24 @@ class ProtocolServer(ProBaseServer):
         C, H, W = self.ishape[-3:]
         identity = isinstance(self.p, int) and self.p == 1
         tiles = H % stride_shape[0] == 0 and W % stride_shape[1] == 0
+        # pool_res carries the persisted values of the pooling sub-protocol
+        # (mode=online): its additive share s and full permutation p; p_block
+        # is already restored in self.p through the layer's setup kwargs
+        sp = pool_res.get('s')
+        if sp is not None:
+            sp = sp.to(self.device)
         if not identity and tiles:
-            p_full, p_block = block_shuffle_perm(self.ishape, stride_shape, device=self.device)
-            self.p = p_block
+            p_full = pool_res.get('p')
+            if p_full is None:
+                p_full, p_block = block_shuffle_perm(self.ishape, stride_shape, device=self.device)
+                self.p = p_block
+            else:
+                p_full = p_full.to(self.device)
         else:
             p_full = 1
             self.p = 1
         pro = ProtocolServer(self.socket, self.stat, self.he, self.device)
-        pro.setup(self.ishape, pool_oshape, last=self.last, p=p_full)
+        pro.setup(self.ishape, pool_oshape, last=self.last, s=sp, p=p_full)
         return pro
         
     def deshuflle_input(self, data: torch.Tensor) -> torch.Tensor:

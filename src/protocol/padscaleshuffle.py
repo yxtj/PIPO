@@ -23,6 +23,8 @@ __ALL__ = ['ProtocolClient', 'ProtocolServer']
 
 
 class ProtocolClient(ProBaseClient):
+    res_fields = ('r', 'pre')
+
     def __init__(self, s: socket.socket, stat: Stat, he: HEEngine, device: str='cpu'):
         super().__init__(s, stat, he, device)
         self.r = None
@@ -81,6 +83,8 @@ class ProtocolClient(ProBaseClient):
 
 
 class ProtocolServer(ProBaseServer):
+    res_fields = ('s', 'm', 'p', 'k', 'mp_pad')
+
     def __init__(self, s: socket.socket, stat: Stat, he: HEEngine, device: str='cpu'):
         super().__init__(s, stat, he, device)
         self.mlast = None
@@ -88,6 +92,7 @@ class ProtocolServer(ProBaseServer):
         self.s = None
         self.m = None # clean multiplicative mask handed to the next layer
         self.mp = None # m expanded over data + pads (None when p is identity)
+        self.mp_pad = None # the pads' independent random mask (mp = cat(m, mp_pad))
         self.p = None # permutation rule (int = identity)
         self.k = 0 # pad count inserted into this layer's output
 
@@ -156,14 +161,22 @@ class ProtocolServer(ProBaseServer):
             "permutation must cover numel(oshape) data elements plus k pads"
         if isinstance(self.p, int) or self.is_local_layer:
             self.mp = None
+            self.mp_pad = None
         else:
             # real positions keep m, pads get an independent mask of the same
-            # distribution so the whole inflated tensor is uniformly scaled
-            pad_m = gen_mul_share((1, self.k), device=self.device) if self.k else None
+            # distribution so the whole inflated tensor is uniformly scaled.
+            # mp_pad is an offline random value: it is persisted in the
+            # resource files (mode=online restores it through setup kwargs)
+            # so that repeated runs on the same resource stay identical.
+            pad_m = kwargs.get('mp_pad')
+            pad_m = pad_m.to(self.device) if pad_m is not None else None
+            if pad_m is None and self.k:
+                pad_m = gen_mul_share((1, self.k), device=self.device)
+            self.mp_pad = pad_m
             flat_m = self.m.reshape(1, -1)
             self.mp = flat_m if pad_m is None else torch.cat([flat_m, pad_m], dim=1)
 
-    def gen_mpooling(self, stride_shape: tuple) -> ProBaseServer:
+    def gen_mpooling(self, stride_shape: tuple, pool_res: dict = None) -> ProBaseServer:
         # Block-wise shuffle (same policy as the shuffle/padshuffle protocols):
         # the previous layer's full permutation is undone first (deshuffle +
         # depad in protocol_pool.recv_*), then a block-wise one is applied to
@@ -177,19 +190,30 @@ class ProtocolServer(ProBaseServer):
         # When this protocol was asked for an unpermuted output (p == 1, the
         # last non-local layer) or the shape does not tile by the stride, fall
         # back to a clean, unpermuted tensor.
+        # pool_res carries the persisted values of the pooling sub-protocol
+        # (mode=online): its additive share s and full permutation p; m is
+        # derived here from this protocol's restored m and p_block is already
+        # restored in self.p through the layer's setup kwargs.
+        pool_res = pool_res or {}
         block = torch.ones(stride_shape, device=self.device)
         mp = torch.kron(self.m, block) # kronecker product
-        sp = torch.rand_like(mp)
+        sp = pool_res.get('s')
+        sp = torch.rand_like(mp) if sp is None else sp.to(self.device)
         C, H, W = self.ishape[-3:]
         identity = isinstance(self.p, int) and self.p == 1
         tiles = H % stride_shape[0] == 0 and W % stride_shape[1] == 0
         if not identity and tiles:
-            p_full, p_block = block_shuffle_perm(self.ishape, stride_shape, device=self.device)
-            self.p = p_block
+            p_full = pool_res.get('p')
+            if p_full is None:
+                p_full, p_block = block_shuffle_perm(self.ishape, stride_shape, device=self.device)
+                self.p = p_block
+            else:
+                p_full = p_full.to(self.device)
         else:
             p_full = 1
             self.p = 1
         self.k = 0 # the pooled output carries no pads, only the permutation
+        self.mp_pad = None
         pro = ProtocolServer(self.socket, self.stat, self.he, self.device)
         pro.setup(self.ishape, mp.shape, last=self.last, s=sp, m=mp, p=p_full, k=0)
         return pro

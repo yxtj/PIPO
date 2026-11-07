@@ -8,10 +8,13 @@ import numpy as np
 import src.comm as comm
 from src.heutil import HEEngine
 from src.layer_basic.stat import Stat
+from src.common.config import get_config
 
 __ALL__ = ['ProtocolClient', 'ProtocolServer']
 
 class ProtocolClient(ProBaseClient):
+    res_fields = ('r', 'pre')
+
     def __init__(self, s: socket.socket, stat: Stat, he: HEEngine, device: str='cpu'):
         super().__init__(s, stat, he, device)
         self.r = None
@@ -41,11 +44,12 @@ class ProtocolClient(ProBaseClient):
 
 
 class ProtocolServer(ProBaseServer):
+    res_fields = ('s', 'm')
+
     def setup(self, ishape: tuple, oshape: tuple, last: ProBaseServer=None,
               **kwargs) -> None:
         super().setup(ishape, oshape, last, **kwargs)
         assert last is None or isinstance(last, ProtocolServer)
-        assert 'noise_sigma' in kwargs, 'noise_sigma is required in kwargs'
         self.mlast = last.m if last is not None else 1
         if self.is_local_layer:
             s = 0
@@ -57,8 +61,11 @@ class ProtocolServer(ProBaseServer):
                 m = 1.0
         self.s = self._gen_add_share_(s, oshape)
         self.m = self._gen_mul_share_(m, oshape)
-        sigma = kwargs['noise_sigma']
-        assert isinstance(sigma, (int, float))
+        # the noise sigma is a protocol parameter (persisted in the resource
+        # files' protocol_args), not an offline random value
+        sigma = kwargs.get('noise_sigma', get_config().server.protocol.noise_sigma)
+        assert isinstance(sigma, (int, float)) and sigma > 0, \
+            "noise protocol requires a positive noise_sigma (server.protocol.noise_sigma)"
         self.noise_sigma = sigma
         
     def recv_offline(self) -> Union[torch.Tensor, np.ndarray]:

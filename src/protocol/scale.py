@@ -12,6 +12,8 @@ from src.layer_basic.stat import Stat
 __ALL__ = ['ProtocolClient', 'ProtocolServer']
 
 class ProtocolClient(ProBaseClient):
+    res_fields = ('r', 'pre')
+
     def __init__(self, s: socket.socket, stat: Stat, he: HEEngine, device: str='cpu'):
         super().__init__(s, stat, he, device)
         self.r = None
@@ -59,6 +61,8 @@ class ProtocolClient(ProBaseClient):
 
 
 class ProtocolServer(ProBaseServer):
+    res_fields = ('s', 'm')
+
     def __init__(self, s: socket.socket, stat: Stat, he: HEEngine, device: str='cpu'):
         super().__init__(s, stat, he, device)
         self.mlast = None
@@ -89,10 +93,15 @@ class ProtocolServer(ProBaseServer):
         self.s = self._gen_add_share_(s, oshape)
         self.m = self._gen_mul_share_(m, oshape)
 
-    def gen_mpooling(self, stride_shape: tuple) -> ProBaseServer:
+    def gen_mpooling(self, stride_shape: tuple, pool_res: dict = None) -> ProBaseServer:
+        # pool_res carries the persisted values of the pooling sub-protocol
+        # (mode=online): its additive share s; m is derived here from this
+        # protocol's restored m, so it is not persisted.
+        pool_res = pool_res or {}
         block = torch.ones(stride_shape, device=self.device)
         mp = torch.kron(self.m, block) # kronecker product
-        sp = torch.rand_like(mp)
+        sp = pool_res.get('s')
+        sp = torch.rand_like(mp) if sp is None else sp.to(self.device)
         pro = ProtocolServer(self.socket, self.stat, self.he, self.device)
         pro.setup(self.ishape, mp.shape, last=self.last, s=sp, m=mp)
         return pro

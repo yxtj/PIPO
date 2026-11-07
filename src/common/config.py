@@ -44,6 +44,26 @@ class ProtocolConfig:
     # pad ratio for the pad / padshuffle / padscaleshuffle protocols (0 = no
     # padding, 1 = as many pads as real elements)
     pad_ratio: float = 0.0
+    # Gaussian noise sigma for the noise protocol
+    noise_sigma: float = 0.0
+
+    def extra_args(self) -> dict:
+        """Protocol-specific parameters persisted into offline resource files
+        (empty for parameter-free protocols)."""
+        if self.name in ("pad", "padshuffle", "padscaleshuffle"):
+            return {"pad_ratio": self.pad_ratio}
+        if self.name == "noise":
+            return {"noise_sigma": self.noise_sigma}
+        return {}
+
+
+@dataclass
+class OfflineConfig:
+    # root directory of the precomputed offline resources
+    dir: str = "offline_res"
+    # resource set index to load (0 = the server picks a random available
+    # set) or to generate at (0 = the next free index)
+    index: int = 0
 
 
 @dataclass
@@ -69,10 +89,15 @@ class CommonConfig:
     # device shared by the client and the server
     device: str = "cpu"
     n: int = 1
+    # run mode: "offline" = generate offline resources in a single process,
+    # "standard" = offline + online phases (default), "online" = restore
+    # precomputed offline resources and skip the offline phase
+    mode: str = "standard"
     # whether to use HE in the offline phase (backend via common.he)
     use_he: bool = False
     he: HEConfig = field(default_factory=HEConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
+    offline: OfflineConfig = field(default_factory=OfflineConfig)
 
 
 @dataclass

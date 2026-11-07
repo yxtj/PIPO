@@ -27,12 +27,18 @@ class Server():
         self.locals = []
         self.dependency = {}
 
-    def setup(self):
-        """Parse the model, send its info to the client, and build server layers."""
+    def setup(self, offline_res: int = None):
+        """Parse the model, send its info to the client, and build server layers.
+
+        offline_res (run mode 'online') is the index of the resource set the
+        server picked; it is announced to the client inside the model-info
+        message so both sides restore the same set."""
         if self.model_name is None:
             self.model_name = get_config().common.model.name
         self.info = build_model_info(self.model, self.inshape)
-        send_model_info(self.socket, self.model_name, self.info)
+        send_model_info(self.socket, self.model_name, self.info, offline_res=offline_res)
+        if offline_res is not None:
+            print("Offline resource set announced: {}".format(offline_res))
         print("Model info sent: {} ({} layers, input {})".format(
             self.model_name, len(self.info.steps), tuple(self.inshape)))
         # one shared engine for all layers, backend/params resolved from the
@@ -55,7 +61,42 @@ class Server():
                 else:
                     self.dependency[f] = [j]
 
+    def setup_layers(self, res: list = None):
+        """Per-layer protocol setup. With res (the layer entries of a loaded
+        resource set, run mode 'online') the persisted masks/shuffles are
+        passed through setup kwargs instead of fresh randomness; the layer
+        order matters, because each layer's setup derives its propagated
+        state (mlast / rplast / kin) from the previous, already-restored
+        layer's protocol."""
+        if self.info is None:
+            raise RuntimeError("Server.setup() must be called before setup_layers()")
+        last_non_local = util.find_last_non_local_layer(len(self.layers), self.locals)
+        last_lyr = None
+        for i, lyr in enumerate(self.layers):
+            name = lyr.__class__.__name__
+            print('  setup {}: {}(inshape={}, outshape={}) ...'.format(i, name, lyr.ishape, lyr.oshape))
+            # the last non-local layer hands its plaintext result to the
+            # client, so the protocol must not mask or permute its output
+            if res is not None:
+                lyr.setup_res(last_lyr, is_last_layer=(i == last_non_local), entry=res[i])
+            else:
+                lyr.setup(last_lyr, is_last_layer=(i == last_non_local))
+            last_lyr = lyr
+
+    def do_offline(self):
+        """Interactive offline phase (assumes setup_layers() has run)."""
+        data = None
+        for i, lyr in enumerate(self.layers):
+            data = lyr.offline() # get the input of this layer (i-th intermediate result)
+            # handle shortcut connections: update the input buffer of shortcut-end layer
+            if i in self.dependency:
+                for j in self.dependency[i]:
+                    if j != i: # the own input fm is passed directly to the layer itself
+                        self.layers[j].update_offline(i, data)
+
     def offline(self):
+        """Standard offline phase: per-layer setup interleaved with the
+        interactive offline round."""
         if self.info is None:
             raise RuntimeError("Server.setup() must be called before offline()")
         last_non_local = util.find_last_non_local_layer(len(self.layers), self.locals)
@@ -65,8 +106,6 @@ class Server():
             name = lyr.__class__.__name__
             print('  offline {}: {}(inshape={}, outshape={}) ...'.format(i, name, lyr.ishape, lyr.oshape))
             # setup
-            # the last non-local layer hands its plaintext result to the
-            # client, so the protocol must not mask or permute its output
             lyr.setup(last_lyr, is_last_layer=(i == last_non_local))
             last_lyr = lyr
             # offline
