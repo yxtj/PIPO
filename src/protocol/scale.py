@@ -20,7 +20,7 @@ class ProtocolClient(ProBaseClient):
         self.pre = None
     
     def setup(self, ishape:tuple, oshape:tuple, **kwargs) -> None:
-        super().setup(ishape, oshape)
+        super().setup(ishape, oshape, **kwargs)
         self.r = self._gen_add_share_(kwargs.get('r'), ishape)
 
     def send_offline(self) -> None:

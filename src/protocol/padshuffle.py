@@ -30,7 +30,7 @@ class ProtocolClient(ProBaseClient):
         self.kin = 0 # pad count embedded in the tensors this client holds
 
     def setup(self, ishape:tuple, oshape:tuple, **kwargs) -> None:
-        super().setup(ishape, oshape)
+        super().setup(ishape, oshape, **kwargs)
         # no handshake: the client derives the pad count of the previous
         # layer's output from pad_ratio, exactly as the server computes it
         self.kin = pad_count(int(np.prod(ishape)), get_config().server.protocol.pad_ratio)
