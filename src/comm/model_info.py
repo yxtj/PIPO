@@ -21,21 +21,21 @@ from src.common.types import ModelInfo
 class ModelInfoMessage:
     model_name: str
     info: ModelInfo
-    # index of the offline resource set the server picked (run mode
-    # 'online'); None in the other modes
-    offline_res: int | None = None
+    # index of the resource set announced by the server: the set to save
+    # (run mode 'offline') or to load ('online'); None in 'standard' mode
+    resource: int | None = None
 
 
 def send_model_info(sock: socket.socket, model_name: str, info: ModelInfo,
-                    offline_res: int = None) -> int:
-    """Serialize ``(model_name, info)`` plus the optional offline-resource
+                    resource: int = None) -> int:
+    """Serialize ``(model_name, info)`` plus the optional resource-set
     announcement and send it as one framed chunk."""
     payload = {
         "model_name": model_name,
         "info": model_info_to_dict(info),
     }
-    if offline_res is not None:
-        payload["offline_res"] = int(offline_res)
+    if resource is not None:
+        payload["resource"] = int(resource)
     data = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return send_chunk(sock, data)
 
@@ -52,9 +52,9 @@ def recv_model_info(sock: socket.socket) -> ModelInfoMessage:
         info = model_info_from_dict(payload["info"])
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError("invalid model-info payload") from exc
-    offline_res = payload.get("offline_res")
+    resource = payload.get("resource")
     return ModelInfoMessage(
         model_name=model_name,
         info=info,
-        offline_res=int(offline_res) if offline_res is not None else None,
+        resource=int(resource) if resource is not None else None,
     )

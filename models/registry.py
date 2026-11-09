@@ -12,7 +12,7 @@ import torch
 
 from pathlib import Path
 
-from models import minionn, openpose, poc, resnet, resnet_cifar, vgg
+from . import minionn, openpose, poc, resnet, resnet_cifar, vgg
 
 
 # Protocols that keep a multiplicative mask on the client side; activations

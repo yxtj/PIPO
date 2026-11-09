@@ -1,4 +1,4 @@
-"""Offline resource persistence (run modes 'offline' / 'online').
+"""Resource persistence (run modes 'offline' / 'online').
 
 A resource set is one numbered pair of files under ``<dir>/<model_name>/``:
 
@@ -6,8 +6,8 @@ A resource set is one numbered pair of files under ``<dir>/<model_name>/``:
 
 Each file is a torch.save payload holding the run identity (version,
 model_name, model_info_hash, protocol, protocol_args, role) plus the
-per-layer offline-resource entries collected from the layers' protocol
-objects (``layer.save_res()``). The server and the client each load only
+per-layer resource entries collected from the layers' protocol objects
+(``layer.save_res()``). The server and the client each save and load only
 their own file; the pair shares the index, and both identity fields and
 entries are validated against the current run before use.
 """
@@ -28,13 +28,13 @@ def _stem(index: int) -> str:
     return "res_{:04d}".format(index)
 
 
-def model_res_dir(res_dir, model_name: str) -> Path:
+def model_resource_dir(res_dir, model_name: str) -> Path:
     return Path(res_dir) / model_name
 
 
 def list_indices(res_dir, model_name: str) -> list:
     """Indices of the complete (server + client) resource pairs on disk."""
-    d = model_res_dir(res_dir, model_name)
+    d = model_resource_dir(res_dir, model_name)
     if not d.is_dir():
         return []
     out = []
@@ -55,7 +55,7 @@ def next_index(res_dir, model_name: str, index: int = None) -> int:
     if index is not None:
         if index in existing:
             raise FileExistsError(
-                "offline resource set {} already exists for model {!r} under {}".format(
+                "resource set {} already exists for model {!r} under {}".format(
                     index, model_name, res_dir))
         return index
     return existing[-1] + 1 if existing else 1
@@ -66,15 +66,15 @@ def pick_index(res_dir, model_name: str, index: int = None) -> int:
     available = list_indices(res_dir, model_name)
     if not available:
         raise FileNotFoundError(
-            "no offline resource sets for model {!r} under {}".format(model_name, res_dir))
+            "no resource sets for model {!r} under {}".format(model_name, res_dir))
     if index is not None:
         if index not in available:
             raise FileNotFoundError(
-                "offline resource set {} not available for model {!r} (have: {})".format(
+                "resource set {} not available for model {!r} (have: {})".format(
                     index, model_name, available))
         return index
     chosen = random.choice(available)
-    print("Offline resource set picked at random: {} (available: {})".format(chosen, available))
+    print("Resource set picked at random: {} (available: {})".format(chosen, available))
     return chosen
 
 
@@ -89,35 +89,53 @@ def _identity(model_name: str, info: ModelInfo) -> dict:
     }
 
 
-def save_res_set(res_dir, model_name: str, index: int, info: ModelInfo,
-                 server_entries: list, client_entries: list) -> None:
-    """Write one server/client resource pair with the shared identity fields."""
+def _save(res_dir, model_name: str, index: int, info: ModelInfo, role: str,
+          entries: list) -> None:
     identity = _identity(model_name, info)
-    d = model_res_dir(res_dir, model_name)
+    d = model_resource_dir(res_dir, model_name)
     d.mkdir(parents=True, exist_ok=True)
-    torch.save({**identity, "role": "server", "layers": server_entries},
-               d / (_stem(index) + "_server.pt"))
-    torch.save({**identity, "role": "client", "layers": client_entries},
-               d / (_stem(index) + "_client.pt"))
-    print("Offline resources saved: set {} under {}".format(index, d))
+    path = d / (_stem(index) + "_" + role + ".pt")
+    torch.save({**identity, "role": role, "layers": entries}, path)
+    print("Resources saved: {} side of set {} under {}".format(role, index, d))
 
 
-def load_res_set(res_dir, model_name: str, index: int, role: str,
-                 info: ModelInfo) -> list:
-    """Load one side's resource file, validating the identity against the
-    current run (model structure, protocol variant and its parameters)."""
-    path = model_res_dir(res_dir, model_name) / (_stem(index) + "_" + role + ".pt")
+def _load(res_dir, model_name: str, index: int, info: ModelInfo, role: str) -> list:
+    path = model_resource_dir(res_dir, model_name) / (_stem(index) + "_" + role + ".pt")
     if not path.exists():
-        raise FileNotFoundError("offline resource file missing: {}".format(path))
+        raise FileNotFoundError("resource file missing: {}".format(path))
     payload = torch.load(path, weights_only=True, map_location="cpu")
     for key, want in _identity(model_name, info).items():
         got = payload.get(key)
         if got != want:
             raise ValueError(
-                "offline resource field {!r} mismatch in {}: expected {!r}, got {!r}".format(
+                "resource field {!r} mismatch in {}: expected {!r}, got {!r}".format(
                     key, path.name, want, got))
     if payload.get("role") != role:
         raise ValueError(
-            "offline resource role mismatch in {}: expected {!r}, got {!r}".format(
+            "resource role mismatch in {}: expected {!r}, got {!r}".format(
                 path.name, role, payload.get("role")))
     return payload["layers"]
+
+
+def save_resource_set_server(res_dir, model_name: str, index: int, info: ModelInfo,
+                             entries: list) -> None:
+    """Write the server side of one resource set."""
+    _save(res_dir, model_name, index, info, "server", entries)
+
+
+def save_resource_set_client(res_dir, model_name: str, index: int, info: ModelInfo,
+                             entries: list) -> None:
+    """Write the client side of one resource set."""
+    _save(res_dir, model_name, index, info, "client", entries)
+
+
+def load_resource_set_server(res_dir, model_name: str, index: int, info: ModelInfo) -> list:
+    """Load the server side of one resource set, validating the identity
+    against the current run (model structure, protocol variant/parameters)."""
+    return _load(res_dir, model_name, index, info, "server")
+
+
+def load_resource_set_client(res_dir, model_name: str, index: int, info: ModelInfo) -> list:
+    """Load the client side of one resource set, validating the identity
+    against the current run (model structure, protocol variant/parameters)."""
+    return _load(res_dir, model_name, index, info, "client")

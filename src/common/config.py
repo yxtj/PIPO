@@ -58,9 +58,9 @@ class ProtocolConfig:
 
 
 @dataclass
-class OfflineConfig:
-    # root directory of the precomputed offline resources
-    dir: str = "offline_res"
+class ResourceConfig:
+    # root directory of the precomputed resources
+    dir: str = "resources"
     # resource set index to load (0 = the server picks a random available
     # set) or to generate at (0 = the next free index)
     index: int = 0
@@ -89,15 +89,16 @@ class CommonConfig:
     # device shared by the client and the server
     device: str = "cpu"
     n: int = 1
-    # run mode: "offline" = generate offline resources in a single process,
-    # "standard" = offline + online phases (default), "online" = restore
-    # precomputed offline resources and skip the offline phase
+    # run mode: "offline" = interactively generate and persist resources,
+    # "standard" = interactive offline + online phases (default, resources
+    # are not persisted), "online" = restore persisted resources and skip the
+    # offline phase
     mode: str = "standard"
     # whether to use HE in the offline phase (backend via common.he)
     use_he: bool = False
     he: HEConfig = field(default_factory=HEConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
-    offline: OfflineConfig = field(default_factory=OfflineConfig)
+    resource: ResourceConfig = field(default_factory=ResourceConfig)
 
 
 @dataclass

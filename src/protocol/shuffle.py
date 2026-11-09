@@ -22,7 +22,7 @@ class ProtocolClient(ProBaseClient):
         self.pre = None
     
     def setup(self, ishape:tuple, oshape:tuple, **kwargs) -> None:
-        super().setup(ishape, oshape)
+        super().setup(ishape, oshape, **kwargs)
         self.r = self._gen_add_share_(kwargs.get('r'), ishape)
 
     def send_offline(self) -> None:
@@ -92,10 +92,11 @@ class ProtocolServer(ProBaseServer):
             p = kwargs.get('p')
             if p is None and self.is_last_layer:
                 p = 1
-        assert p is None or isinstance(p, int) or p.numel() == int(np.prod(ishape))
+        # p permutes the output, same size as oshape.
+        # pooling sub-protocol's p_full shapes like the input, 
+        # whose numel equals its inflated output numel (stride only re-tiles dims).
+        assert p is None or isinstance(p, int) or p.numel() == int(np.prod(oshape))
         if last is None or isinstance(last.p, int):
-            # no pending permutation to invert: first layer, or the previous
-            # layer applies none (local layers / pooling propagate p = 1)
             self.rplast = 1
         else:
             self.rplast = gen_reverse_shuffle(last.p)
@@ -103,8 +104,6 @@ class ProtocolServer(ProBaseServer):
         if p is None:
             self.p = gen_shuffle(self.oshape, device=self.device) # shuffle matrix
         else:
-            # honor the given permutation: int 1 = no shuffle (local layers,
-            # pooling), or a propagated pending permutation tensor
             self.p = p
         # self.rp = torch.argsort(self.p.ravel()).reshape(self.ishape) # unshuffle matrix
 

@@ -34,19 +34,19 @@ seed = 0
 # [common.he.pyfhel] (CKKS: n, scale, qi_sizes).
 use_he = false
 # Run mode:
-#   "offline"  - single-process generation of offline resource sets
-#                (see [common.offline]); the server/client role argument is
-#                ignored, --res-count generates several sets in one run
-#   "standard" - interactive offline phase + online phase (default)
-#   "online"   - restore a precomputed offline resource set and skip the
-#                interactive offline phase (the server picks the set via
-#                [common.offline].index, or a random one, and announces it)
+#   "offline"  - interactive generation of a resource set (see
+#                [common.resource]); the server and the client each run once
+#   "standard" - interactive offline phase + online phase (default);
+#                generated resources are not persisted
+#   "online"   - restore a precomputed resource set and skip the interactive
+#                offline phase (the server picks the set via
+#                [common.resource].index, or a random one, and announces it)
 mode = "standard"
 
-[common.offline]
-# Root directory of the precomputed offline resources; one sub-directory per
+[common.resource]
+# Root directory of the precomputed resources; one sub-directory per
 # model name, one res_XXXX_server.pt + res_XXXX_client.pt pair per set.
-dir = "offline_res"
+dir = "resources"
 # Resource set index. Loading (mode = online): 0 = the server picks a random
 # available set and announces it to the client. Generating (mode = offline):
 # 0 = the next free index after the highest existing one.

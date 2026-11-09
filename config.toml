@@ -10,7 +10,7 @@ host = "127.0.0.1"
 port = 8100
 device = "cpu"            # device shared by the client and the server
 n = 1                     # number of online inference rounds
-mode = "standard"         # offline | standard | online (see [common.offline])
+mode = "standard"         # offline | standard | online (see [common.resource])
 use_he = false            # use HE in the offline phase (backend via [common.he])
 
 [common.he]
@@ -27,8 +27,8 @@ seed = 0                  # RNG seed for random weights (shared client + server)
 wfile = ""                # explicit weights file; empty = search wfolder
 wfolder = "pretrained"    # default weights dir: <wfolder>/<model_name>.pt|.pth
 
-[common.offline]
-dir = "offline_res"       # root directory of the precomputed offline resources
+[common.resource]
+dir = "resources"         # root directory of the precomputed resources
 index = 0                 # 0 = random set when loading (server picks) / next free when generating
 
 [server.protocol]

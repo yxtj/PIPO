@@ -27,18 +27,19 @@ class Server():
         self.locals = []
         self.dependency = {}
 
-    def setup(self, offline_res: int = None):
+    def setup(self, resource: int = None):
         """Parse the model, send its info to the client, and build server layers.
 
-        offline_res (run mode 'online') is the index of the resource set the
-        server picked; it is announced to the client inside the model-info
-        message so both sides restore the same set."""
+        resource is the index of the resource set the server picked: the set
+        to save in run mode 'offline', the set to load in 'online'; None in
+        'standard' mode. It is announced to the client inside the model-info
+        message so both sides agree on the same index."""
         if self.model_name is None:
             self.model_name = get_config().common.model.name
         self.info = build_model_info(self.model, self.inshape)
-        send_model_info(self.socket, self.model_name, self.info, offline_res=offline_res)
-        if offline_res is not None:
-            print("Offline resource set announced: {}".format(offline_res))
+        send_model_info(self.socket, self.model_name, self.info, resource=resource)
+        if resource is not None:
+            print("Resource set announced: {}".format(resource))
         print("Model info sent: {} ({} layers, input {})".format(
             self.model_name, len(self.info.steps), tuple(self.inshape)))
         # one shared engine for all layers, backend/params resolved from the

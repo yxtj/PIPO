@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Offline-resource round trip: generate (mode=offline) -> restore
-(mode=online) -> compare against the plaintext local result.
+"""Resource round trip: generate (mode=offline) -> restore (mode=online)
+-> compare against the plaintext local result.
 
-Usage: python tests/offline_res.py [protocol] [model_name]
+Usage: python tests/resource.py [protocol] [model_name]
        (defaults: protocol padscaleshuffle, model poc-1)
 
 For the given protocol/model this script
-1. generates one offline resource set in-process (a single process playing
-   both roles over a socket pair),
+1. starts `python -m src.main server --mode offline` as a subprocess and runs
+   the client in this process, so both roles interactively generate and
+   persist their own half of one resource set,
 2. starts `python -m src.main server --mode online` as a subprocess that
    loads that set,
 3. runs the client in this process with the restored client resources and
@@ -33,27 +34,53 @@ from models import registry
 from session import _connect, _free_port, _read
 
 
+def _wait_server(server, err):
+    server.wait(timeout=300)
+    server_err = _read(err)
+    if server.returncode not in (0, None):
+        raise RuntimeError('server run failed (code {}):\n{}'.format(
+            server.returncode, server_err))
+    return server_err
+
+
 def run_roundtrip(model_name, protocol='padscaleshuffle', seed=0, device='cpu'):
     from src.common.config import load_config, set_config
 
-    # 1) in-process offline generation; the config must be committed before
-    #    the protocol modules are dynamically imported (src.protocol)
+    # the config must be committed before the protocol modules are
+    # dynamically imported (src.protocol)
+    res_dir = tempfile.mkdtemp(prefix='pipo_res_')
     cfg = load_config()
-    cfg.common.mode = 'offline'
     cfg.server.protocol.name = protocol
     cfg.common.use_he = False
     cfg.common.device = device
+    cfg.common.resource.dir = res_dir
+    cfg.common.resource.index = 0
     set_config(cfg)
 
-    from src.system.offline_res import list_indices, load_res_set
-    from src.system.runner import run_offline
+    from src.system.resource import list_indices, load_resource_set_client
 
-    res_dir = tempfile.mkdtemp(prefix='pipo_res_')
     torch.manual_seed(seed)
     inshape, model = registry.load(model_name, seed=seed, device=device)
 
     try:
-        run_offline(model, inshape, model_name=model_name, res_dir=res_dir, res_count=1)
+        # 1) interactive offline generation: the server subprocess persists
+        #    its half, the in-process client persists its own half
+        port = _free_port()
+        out, err = tempfile.TemporaryFile(), tempfile.TemporaryFile()
+        args = [sys.executable, '-m', 'src.main', 'server', '--mode', 'offline',
+                '--res-dir', res_dir, '--model', model_name, '--protocol', protocol,
+                '--port', str(port), '--device', device]
+        server = subprocess.Popen(args, cwd=str(PROJECT_ROOT), stdout=out, stderr=err)
+        try:
+            from src.system.runner import run_client
+
+            run_client('127.0.0.1', port, None, cfg,
+                       do_offline=True, do_online=False)
+        finally:
+            _wait_server(server, err)
+            out.close()
+            err.close()
+
         indices = list_indices(res_dir, model_name)
         assert indices == [1], 'expected exactly one generated resource set, got {}'.format(indices)
 
@@ -87,11 +114,11 @@ def run_roundtrip(model_name, protocol='padscaleshuffle', seed=0, device='cpu'):
             c = _connect(port)
             client = Client(c, he=None)
             client.setup()
-            assert client.offline_res == 1, \
-                'server announced resource set {}'.format(client.offline_res)
+            assert client.resource == 1, \
+                'server announced resource set {}'.format(client.resource)
             # 3) restore the client side from the announced set
-            entries = load_res_set(res_dir, client.model_name, client.offline_res,
-                                   'client', client.info)
+            entries = load_resource_set_client(res_dir, client.model_name,
+                                               client.resource, client.info)
             client.setup_layers(res=entries)
 
             # two online rounds on the same input must be identical
@@ -102,11 +129,7 @@ def run_roundtrip(model_name, protocol='padscaleshuffle', seed=0, device='cpu'):
                 'same resource + same input produced different results (max diff {})'.format(
                     (res1 - res2).abs().max())
         finally:
-            server.wait(timeout=120)
-            server_err = _read(err)
-            if server.returncode not in (0, None):
-                raise RuntimeError('server run failed (code {}):\n{}'.format(
-                    server.returncode, server_err))
+            _wait_server(server, err)
             out.close()
             err.close()
 
@@ -146,7 +169,7 @@ def main():
     if not model_name.startswith('poc-'):
         model_name = 'poc-' + model_name
 
-    print('offline-resource round trip: model {} / protocol {}'.format(model_name, protocol))
+    print('resource round trip: model {} / protocol {}'.format(model_name, protocol))
     r = check_threshold(run_roundtrip(model_name, protocol))
     print('[{}] model {}: abs diff mean {:.3e} / max {:.3e}, rel(norm) {:.3e} '
           '(rounds identical, resource restored)'.format(

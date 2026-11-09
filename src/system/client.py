@@ -18,7 +18,7 @@ class Client():
         self.model_name = None
         self.info = None
         self.inshape = None
-        self.offline_res = None # resource set index announced by the server
+        self.resource = None # resource set announced by the server: save (offline) or load (online)
         self.layers = []
         self.linears = []
         self.shortcuts = {}
@@ -30,7 +30,7 @@ class Client():
         self.model_name = message.model_name
         self.info = message.info
         self.inshape = self.info.inshape
-        self.offline_res = message.offline_res
+        self.resource = message.resource
         if self._inshape is not None and tuple(self._inshape) != tuple(self.inshape):
             raise ValueError(
                 "client inshape {} does not match server model info {}".format(
