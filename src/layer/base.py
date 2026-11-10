@@ -27,7 +27,7 @@ class LayerClient(LayerCommon):
         self.stat.time_offline += time.time() - t
 
     def save_res(self) -> dict:
-        """Persisted offline resources of this layer (offline_res files)."""
+        """Persisted resources of this layer (resource files)."""
         return {"protocol": self.protocol.save_res()}
 
     def setup_res(self, entry: dict) -> None:
@@ -84,7 +84,7 @@ class LayerServer(LayerCommon):
         self.stat.time_offline += time.time() - t
 
     def save_res(self) -> dict:
-        """Persisted offline resources of this layer (offline_res files)."""
+        """Persisted resources of this layer (resource files)."""
         return {"protocol": self.protocol.save_res()}
 
     def setup_res(self, last_lyr: LayerCommon, is_last_layer: bool, entry: dict) -> None:

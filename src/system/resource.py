@@ -61,18 +61,16 @@ def next_index(res_dir, model_name: str, index: int = None) -> int:
     return existing[-1] + 1 if existing else 1
 
 
-def pick_index(res_dir, model_name: str, index: int = None) -> int:
-    """Index to load (mode=online): explicit or a random available one."""
-    available = list_indices(res_dir, model_name)
+def choose_index(available, resource_id: int = None) -> int:
+    """Pick a set id from the server-announced list (mode=online): an explicit
+    one (must be available) or a random available id."""
     if not available:
-        raise FileNotFoundError(
-            "no resource sets for model {!r} under {}".format(model_name, res_dir))
-    if index is not None:
-        if index not in available:
+        raise FileNotFoundError("no resource sets announced by the server")
+    if resource_id is not None:
+        if resource_id not in available:
             raise FileNotFoundError(
-                "resource set {} not available for model {!r} (have: {})".format(
-                    index, model_name, available))
-        return index
+                "resource set {} not available (have: {})".format(resource_id, available))
+        return resource_id
     chosen = random.choice(available)
     print("Resource set picked at random: {} (available: {})".format(chosen, available))
     return chosen

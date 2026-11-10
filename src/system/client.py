@@ -1,9 +1,11 @@
 import struct
 
 from src.comm.model_info import recv_model_info
+from src.comm.resource import recv_resource_ids, send_resource_id
 from src.common.config import get_config, he_engine_args
 from src.heutil import create_he
 from src.system import util
+from src.system.resource import choose_index, load_resource_set_client
 
 
 class Client():
@@ -18,7 +20,8 @@ class Client():
         self.model_name = None
         self.info = None
         self.inshape = None
-        self.resource = None # resource set announced by the server: save (offline) or load (online)
+        # set only in run mode 'online', by select_resource()
+        self.resource_id = None
         self.layers = []
         self.linears = []
         self.shortcuts = {}
@@ -30,7 +33,6 @@ class Client():
         self.model_name = message.model_name
         self.info = message.info
         self.inshape = self.info.inshape
-        self.resource = message.resource
         if self._inshape is not None and tuple(self._inshape) != tuple(self.inshape):
             raise ValueError(
                 "client inshape {} does not match server model info {}".format(
@@ -44,6 +46,26 @@ class Client():
             util.make_client_model_from_info(self.socket, self.info, self.he, device)
         print("Model info received: {} ({} layers, input {})".format(
             self.model_name, len(self.layers), tuple(self.inshape)))
+
+    def select_resource(self, resource_id: int = None) -> int:
+        """Online mode: receive the ids available on the server, pick one
+        (explicit or random) and announce it back. Must run after setup()."""
+        if self.info is None:
+            raise RuntimeError("Client.setup() must be called before select_resource()")
+        available = recv_resource_ids(self.socket)
+        self.resource_id = choose_index(available, resource_id)
+        send_resource_id(self.socket, self.resource_id)
+        print("Resource set selected: {}".format(self.resource_id))
+        return self.resource_id
+
+    def restore(self, res_dir, resource_id: int) -> None:
+        """Online mode: load this side's resource file and set the layers up
+        from it instead of drawing fresh randomness."""
+        if self.info is None:
+            raise RuntimeError("Client.setup() must be called before restore()")
+        entries = load_resource_set_client(res_dir, self.model_name, resource_id, self.info)
+        self.setup_layers(res=entries)
+        print("Client resources restored (set {})".format(resource_id))
 
     def setup_layers(self, res: list = None):
         """Per-layer protocol setup. With res (the layer entries of a loaded

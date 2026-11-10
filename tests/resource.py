@@ -57,7 +57,7 @@ def run_roundtrip(model_name, protocol='padscaleshuffle', seed=0, device='cpu'):
     cfg.common.resource.index = 0
     set_config(cfg)
 
-    from src.system.resource import list_indices, load_resource_set_client
+    from src.system.resource import list_indices
 
     torch.manual_seed(seed)
     inshape, model = registry.load(model_name, seed=seed, device=device)
@@ -114,12 +114,10 @@ def run_roundtrip(model_name, protocol='padscaleshuffle', seed=0, device='cpu'):
             c = _connect(port)
             client = Client(c, he=None)
             client.setup()
-            assert client.resource == 1, \
-                'server announced resource set {}'.format(client.resource)
-            # 3) restore the client side from the announced set
-            entries = load_resource_set_client(res_dir, client.model_name,
-                                               client.resource, client.info)
-            client.setup_layers(res=entries)
+            # 3) negotiate the resource id with the server, then restore
+            index = client.select_resource(1)
+            assert index == 1, 'server announced resource set {}'.format(index)
+            client.restore(res_dir, index)
 
             # two online rounds on the same input must be identical
             with torch.no_grad():

@@ -4,7 +4,9 @@ import socket
 import torch
 
 from src.system import util, Server, Client
-from src.system.resource import load_resource_set_server, load_resource_set_client, next_index, pick_index, save_resource_set_server, save_resource_set_client
+from src.system.resource import (next_index, save_resource_set_client,
+                                 save_resource_set_server)
+
 
 def show_stat(layers, n, do_offline=True, do_online=True):
     s_total, s_relu, s_linear, s_l_conv, s_l_fc, s_pool, s_sc = util.analyze_stat(layers, n)
@@ -28,6 +30,22 @@ def show_stat(layers, n, do_offline=True, do_online=True):
         s_pool.show_online("  Pool", n)
 
 
+def _layer_res(layers):
+    """Snapshot the per-layer offline resources of one side."""
+    return [lyr.save_res() for lyr in layers]
+
+def _finish(layers, n, do_offline, do_online, t0, t1, t2):
+    """Shared timing/statistics report for both roles."""
+    if do_online:
+        print("Quick measure: total offline time: {:.3f}; total online time: {:.3f}, average {}".format(
+            t1 - t0, t2 - t1, (t2 - t1)/n))
+    else:
+        print("Quick measure: total offline time: {:.3f}".format(t1 - t0))
+    kind = "resource sets" if (do_offline and not do_online) else "samples"
+    print("Statistics with {} {}: ".format(n, kind))
+    show_stat(layers, n, do_offline, do_online)
+
+
 def run_server(host: str, port: int, model: torch.nn.Module, inshape: tuple, n: int,
                cfg, do_offline: bool, do_online: bool, model_name: str = None):
 
@@ -39,50 +57,36 @@ def run_server(host: str, port: int, model: torch.nn.Module, inshape: tuple, n: 
     print("Server is running on {}:{}".format(host, port))
     conn, addr = s.accept()
     print("Client connected from: {}".format(addr))
-    # initialize server (parse the model, send info, build layers)
     t0 = time.time()
     server = Server(conn, model, inshape, model_name=model_name)
+    server.setup()
+    print("Server is ready")
 
     if do_offline:
-        if do_online:
-            # standard: run offline phase, resources are not persisted
-            server.setup()
-            print("Server is ready")
+        # offline/standard: interactive offline phase. In offline-only mode n
+        # resource sets are generated and persisted, starting from the next
+        # free id (both sides compute it locally from the shared directory
+        # before the first round, so they agree on the ids).
+        start = None if do_online else next_index(res_dir, server.model_name, res_index)
+        for k in range(n):
             server.offline()
-        else:
-            # offline-only: run offline phase, persist resources;
-            # the new set index is announced to the client inside the model info
-            index = next_index(res_dir, server.model_name or cfg.common.model.name, res_index)
-            server.setup(resource=index)
-            print("Server is ready (saving resource set {})".format(index))
-            server.offline()
-            save_resource_set_server(res_dir, server.model_name, index, server.info,
-                                     [lyr.save_res() for lyr in server.layers])
+            if start is not None:
+                save_resource_set_server(res_dir, server.model_name, start + k,
+                                         server.info, _layer_res(server.layers))
     else:
-        # online-only: restore resources instead of generating
-        # server picks one and announces it to the client inside the model-info message
-        index = pick_index(res_dir, server.model_name or cfg.common.model.name, res_index)
-        server.setup(resource=index)
-        entries = load_resource_set_server(res_dir, server.model_name, index, server.info)
-        server.setup_layers(res=entries)
-        print("Server is ready (resources restored, set {})".format(index))
+        # online-only: negotiate the set id with the client and restore it
+        index = server.select_resource(res_dir, res_index)
+        server.restore(res_dir, index)
     t1 = time.time()
     print("Server offline finished")
-    # online phase
+
     if do_online:
-        for i in range(n):
-            server.online()
+        for _ in range(n):
+                server.online()
         print("Server online finished")
     t2 = time.time()
     conn.close()
-    # finish
-    if do_online:
-        print("Quick measure: total offline time: {:.3f}; total online time: {:.3f}, average {}".format(
-            t1 - t0, t2 - t1, (t2 - t1)/n))
-    else:
-        print("Quick measure: total offline time: {:.3f}".format(t1 - t0))
-    print("Statistics with {} samples: ".format(n))
-    show_stat(server.layers, n, do_offline, do_online)
+    _finish(server.layers, n, do_offline, do_online, t0, t1, t2)
 
 
 def run_client(host: str, port: int, he, cfg, do_offline: bool, do_online: bool,
@@ -95,7 +99,6 @@ def run_client(host: str, port: int, he, cfg, do_offline: bool, do_online: bool,
     # connect to server
     s = socket.create_connection((host, port))
     print("Client is connecting to {}:{}".format(host, port))
-    # initialize client (receive the server-parsed model info)
     t0 = time.time()
     client = Client(s, he=he)
     client.setup()
@@ -133,53 +136,23 @@ def run_client(host: str, port: int, he, cfg, do_offline: bool, do_online: bool,
             raise
         print("Verify: client model matches server model info (hash {})".format(server_hash[:12]))
 
-    # offline phase
     if do_offline:
-        if do_online:
-            # standard: the server does not announce a resource set
-            if client.resource is not None:
-                s.close()
-                raise RuntimeError(
-                    "the server announced resource set {} (offline mode) "
-                    "but the client runs in standard mode".format(client.resource))
+        # offline/standard: interactive offline phase. In offline-only mode the
+        # client persists its half of n resource sets under the same ids the
+        # server derives (see run_server).
+        start = None if do_online else next_index(res_dir, client.model_name, res_index)
+        for k in range(n):
             client.offline()
-        else:
-            # offline-only: run the offline phase, persist the generated resources
-            # resources index is announced by the server
-            index = client.resource
-            if index is None:
-                s.close()
-                raise RuntimeError(
-                    "the server did not announce a resource set: "
-                    "the server must generate resources when the client does")
-            if res_index is not None and res_index != index:
-                s.close()
-                raise RuntimeError(
-                    "client requested resource set {} but the server announced {}".format(
-                        res_index, index))
-            client.offline()
-            save_resource_set_client(res_dir, client.model_name, index, client.info,
-                                     [lyr.save_res() for lyr in client.layers])
+            if start is not None:
+                save_resource_set_client(res_dir, client.model_name, start + k,
+                                         client.info, _layer_res(client.layers))
     else:
-        # online-only: restore this side's resources; the server announced the set
-        # index inside the model-info message, so both sides agree on it
-        index = client.resource
-        if index is None:
-            s.close()
-            raise RuntimeError(
-                "the server did not announce a resource set: "
-                "the server must run in online mode when the client does")
-        if res_index is not None and res_index != index:
-            s.close()
-            raise RuntimeError(
-                "client requested resource set {} but the server announced {}".format(
-                    res_index, index))
-        entries = load_resource_set_client(res_dir, client.model_name, index, client.info)
-        client.setup_layers(res=entries)
-        print("Client resources restored (set {})".format(index))
+        # online-only: negotiate the set id with the server and restore it
+        index = client.select_resource(res_index)
+        client.restore(res_dir, index)
     t1 = time.time()
     print("Client offline finished")
-    # online phase
+
     if do_online:
         input_shape = inshape
         if len(inshape) == 3 or len(inshape) == 1:
@@ -195,14 +168,7 @@ def run_client(host: str, port: int, he, cfg, do_offline: bool, do_online: bool,
                 diff = torch.abs(res - res2)
                 print("Verify {}: mean absolute difference: {:.6g}, mean relative difference: {:.6g}".format(
                     i, diff.mean(), torch.nanmean(diff/res2)))
-        t2 = time.time()
-        s.close()
         print("Client online finished")
-        print("Quick measure: total offline time: {:.3f}; total online time: {:.3f}, average {}".format(
-            t1 - t0, t2 - t1, (t2 - t1)/n))
-    else:
-        s.close()
-        print("Quick measure: total offline time: {:.3f}".format(t1 - t0))
-    print("Statistics with {} samples: ".format(n))
-    show_stat(client.layers, n, do_offline, do_online)
-    
+    t2 = time.time()
+    s.close()
+    _finish(client.layers, n, do_offline, do_online, t0, t1, t2)

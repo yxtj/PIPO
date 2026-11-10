@@ -23,7 +23,8 @@ device = "cpu"
 # Model name, resolved through models/registry.py (e.g. "poc-1", "minionn",
 # plus the resnet / vgg variants).
 model = "poc-1"
-# Number of online inference rounds per run.
+# Number of online inference rounds per run (standard / online). In mode
+# "offline" the same value is the number of resource sets to generate.
 n = 1
 # RNG seed for randomly initialised weights. The server and the client build
 # the same model, so they must agree -- otherwise --verify compares against a

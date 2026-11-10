@@ -22,17 +22,20 @@ def parse_args() -> argparse.Namespace:
                              "online (restore persisted resources)")
     for flag, dest in [
         ("--host", "host"), ("--port", "port"), ("--device", "device"),
-        ("--model", "model"), ("--n", "n"), ("--seed", "seed"),
+        ("--model", "model"), ("--seed", "seed"),
         ("--wfile", "wfile"), ("--wfolder", "wfolder"),
         ("--protocol", "protocol"), ("--pad-ratio", "pad_ratio"),
         ("--res-dir", "res_dir"), ("--res-index", "res_index"),
     ]:
-        converter = {"port": int, "n": int, "seed": int, "pad_ratio": float,
+        converter = {"port": int, "seed": int, "pad_ratio": float,
                      "res_index": int}.get(dest)
         if converter:
             parser.add_argument(flag, default=argparse.SUPPRESS, type=converter)
         else:
             parser.add_argument(flag, default=argparse.SUPPRESS)
+    parser.add_argument("--n", default=argparse.SUPPRESS, type=int,
+                        help="standard/online: number of online rounds; "
+                             "offline: number of resource sets to generate")
     parser.add_argument("--use-he", dest="use_he", action="store_true", default=argparse.SUPPRESS)
     parser.add_argument("--verify", dest="verify", action="store_true", default=argparse.SUPPRESS)
     return parser.parse_args()

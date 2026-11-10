@@ -88,6 +88,8 @@ class CommonConfig:
     port: int = 8100
     # device shared by the client and the server
     device: str = "cpu"
+    # standard/online: number of online inference rounds; offline: number of
+    # resource sets to generate in one run
     n: int = 1
     # run mode: "offline" = interactively generate and persist resources,
     # "standard" = interactive offline + online phases (default, resources

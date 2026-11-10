@@ -4,10 +4,12 @@ import torch
 import torch.nn as nn
 
 from src.comm.model_info import send_model_info
+from src.comm.resource import recv_resource_id, send_resource_ids
 from src.common.config import get_config, he_engine_args
 from src.common.model_info import build_model_info
 from src.heutil import create_he
 from src.system import util
+from src.system.resource import list_indices, load_resource_set_server
 
 
 class Server():
@@ -27,19 +29,12 @@ class Server():
         self.locals = []
         self.dependency = {}
 
-    def setup(self, resource: int = None):
-        """Parse the model, send its info to the client, and build server layers.
-
-        resource is the index of the resource set the server picked: the set
-        to save in run mode 'offline', the set to load in 'online'; None in
-        'standard' mode. It is announced to the client inside the model-info
-        message so both sides agree on the same index."""
+    def setup(self):
+        """Parse the model, send its info to the client, and build server layers."""
         if self.model_name is None:
             self.model_name = get_config().common.model.name
         self.info = build_model_info(self.model, self.inshape)
-        send_model_info(self.socket, self.model_name, self.info, resource=resource)
-        if resource is not None:
-            print("Resource set announced: {}".format(resource))
+        send_model_info(self.socket, self.model_name, self.info)
         print("Model info sent: {} ({} layers, input {})".format(
             self.model_name, len(self.info.steps), tuple(self.inshape)))
         # one shared engine for all layers, backend/params resolved from the
@@ -61,6 +56,37 @@ class Server():
                     self.dependency[f].append(j)
                 else:
                     self.dependency[f] = [j]
+
+    def select_resource(self, res_dir, resource_id: int = None) -> int:
+        """Online mode: announce the available resource-set ids and receive
+        the one the client picked. Must run after setup()."""
+        if self.info is None:
+            raise RuntimeError("Server.setup() must be called before select_resource()")
+        available = list_indices(res_dir, self.model_name)
+        if not available:
+            raise FileNotFoundError(
+                "no resource sets for model {!r} under {}".format(self.model_name, res_dir))
+        if resource_id is not None and resource_id not in available:
+            raise FileNotFoundError(
+                "resource set {} not available for model {!r} (have: {})".format(
+                    resource_id, self.model_name, available))
+        send_resource_ids(self.socket, available)
+        chosen = recv_resource_id(self.socket)
+        if chosen not in available:
+            raise ValueError(
+                "client selected resource set {}, which is outside the announced range {}".format(
+                    chosen, available))
+        print("Resource set selected: {} (available: {})".format(chosen, available))
+        return chosen
+
+    def restore(self, res_dir, resource_id: int) -> None:
+        """Online mode: load this side's resource file and set the layers up
+        from it instead of drawing fresh randomness."""
+        if self.info is None:
+            raise RuntimeError("Server.setup() must be called before restore()")
+        entries = load_resource_set_server(res_dir, self.model_name, resource_id, self.info)
+        self.setup_layers(res=entries)
+        print("Server resources restored (set {})".format(resource_id))
 
     def setup_layers(self, res: list = None):
         """Per-layer protocol setup. With res (the layer entries of a loaded
@@ -97,7 +123,8 @@ class Server():
 
     def offline(self):
         """Standard offline phase: per-layer setup interleaved with the
-        interactive offline round."""
+        interactive offline round. May be called repeatedly (one resource set
+        per call)."""
         if self.info is None:
             raise RuntimeError("Server.setup() must be called before offline()")
         last_non_local = util.find_last_non_local_layer(len(self.layers), self.locals)

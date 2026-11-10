@@ -4,6 +4,9 @@ The server parses the model and sends its structural IR right after the client
 connects, so the client can build its protocol layers without loading a model.
 Uses the same canonical JSON encoding as ``model_info_io`` over the existing
 length-prefixed chunk framing.
+
+Resource-set selection is a separate exchange (``src.comm.resource``) used only
+in run mode 'online'; it is intentionally not part of this message.
 """
 
 from __future__ import annotations
@@ -21,21 +24,14 @@ from src.common.types import ModelInfo
 class ModelInfoMessage:
     model_name: str
     info: ModelInfo
-    # index of the resource set announced by the server: the set to save
-    # (run mode 'offline') or to load ('online'); None in 'standard' mode
-    resource: int | None = None
 
 
-def send_model_info(sock: socket.socket, model_name: str, info: ModelInfo,
-                    resource: int = None) -> int:
-    """Serialize ``(model_name, info)`` plus the optional resource-set
-    announcement and send it as one framed chunk."""
+def send_model_info(sock: socket.socket, model_name: str, info: ModelInfo) -> int:
+    """Serialize ``(model_name, info)`` and send it as one framed chunk."""
     payload = {
         "model_name": model_name,
         "info": model_info_to_dict(info),
     }
-    if resource is not None:
-        payload["resource"] = int(resource)
     data = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return send_chunk(sock, data)
 
@@ -52,9 +48,4 @@ def recv_model_info(sock: socket.socket) -> ModelInfoMessage:
         info = model_info_from_dict(payload["info"])
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError("invalid model-info payload") from exc
-    resource = payload.get("resource")
-    return ModelInfoMessage(
-        model_name=model_name,
-        info=info,
-        resource=int(resource) if resource is not None else None,
-    )
+    return ModelInfoMessage(model_name=model_name, info=info)
