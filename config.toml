@@ -12,6 +12,7 @@ device = "cpu"            # device shared by the client and the server
 n = 1                     # standard/online: online rounds; offline: resource sets to generate
 mode = "standard"         # offline | standard | online (see [common.resource])
 use_he = false            # use HE in the offline phase (backend via [common.he])
+show_detail = false       # print per-layer statistics before the summary table
 
 [common.he]
 backend = "none"        # HE backend used when use_he = true: "none" | "pyfhel"

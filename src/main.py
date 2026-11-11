@@ -37,6 +37,7 @@ def parse_args() -> argparse.Namespace:
                         help="standard/online: number of online rounds; "
                              "offline: number of resource sets to generate")
     parser.add_argument("--use-he", dest="use_he", action="store_true", default=argparse.SUPPRESS)
+    parser.add_argument("--show-detail", dest="show_detail", action="store_true", default=argparse.SUPPRESS)
     parser.add_argument("--verify", dest="verify", action="store_true", default=argparse.SUPPRESS)
     return parser.parse_args()
 
@@ -51,6 +52,7 @@ def main():
         "common.n": "n",
         "common.mode": "run_mode",
         "common.use_he": "use_he",
+        "common.show_detail": "show_detail",
         "common.model.name": "model",
         "common.model.seed": "seed",
         "common.model.wfile": "wfile",

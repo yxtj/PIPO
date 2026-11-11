@@ -98,6 +98,8 @@ class CommonConfig:
     mode: str = "standard"
     # whether to use HE in the offline phase (backend via common.he)
     use_he: bool = False
+    # print the per-layer statistics before the summary table
+    show_detail: bool = False
     he: HEConfig = field(default_factory=HEConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     resource: ResourceConfig = field(default_factory=ResourceConfig)
