@@ -113,7 +113,7 @@ def test_constructors_do_no_io():
 
     inshape, model = registry.load("poc-1", seed=0)
     client = Client(BoomSocket())
-    assert client.info is None and client.layers == []
+    assert client.model_info is None and client.layers == []
     server = Server(BoomSocket(), model, inshape)
     assert server.info is None and server.layers == []
 
