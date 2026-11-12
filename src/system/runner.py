@@ -8,8 +8,8 @@ from src.system.resource import (next_index, save_resource_set_client,
                                  save_resource_set_server)
 
 
-def show_stat(layers, n, do_offline=True, do_online=True):
-    s_total, s_relu, s_linear, s_l_conv, s_l_fc, s_pool, s_sc = util.analyze_stat(layers, n)
+def show_stat(layers, n, do_offline=True, do_online=True, show_layers=True):
+    s_total, s_relu, s_linear, s_l_conv, s_l_fc, s_pool, s_sc = util.analyze_stat(layers, show_layers)
     if do_offline:
         print()
         s_total.show_offline("Total")
@@ -34,7 +34,7 @@ def _layer_res(layers):
     """Snapshot the per-layer offline resources of one side."""
     return [lyr.save_res() for lyr in layers]
 
-def _finish(layers, n, do_offline, do_online, t0, t1, t2):
+def _finish(layers, n, do_offline, do_online, show_detail, t0, t1, t2):
     """Shared timing/statistics report for both roles."""
     if do_online:
         print("Quick measure: total offline time: {:.3f}; total online time: {:.3f}, average {}".format(
@@ -43,7 +43,7 @@ def _finish(layers, n, do_offline, do_online, t0, t1, t2):
         print("Quick measure: total offline time: {:.3f}".format(t1 - t0))
     kind = "resource sets" if (do_offline and not do_online) else "samples"
     print("Statistics with {} {}: ".format(n, kind))
-    show_stat(layers, n, do_offline, do_online)
+    show_stat(layers, n, do_offline, do_online, show_layers=show_detail)
 
 
 def run_server(host: str, port: int, model: torch.nn.Module, inshape: tuple, n: int,
@@ -63,16 +63,15 @@ def run_server(host: str, port: int, model: torch.nn.Module, inshape: tuple, n: 
     print("Server is ready")
 
     if do_offline:
-        # offline/standard: interactive offline phase. In offline-only mode n
-        # resource sets are generated and persisted, starting from the next
-        # free id (both sides compute it locally from the shared directory
-        # before the first round, so they agree on the ids).
+        # offline-only: generate n resource sets; standard: a single set is
+        # generated and reused by all n online rounds.
+        sets = 1 if do_online else n
         start = None if do_online else next_index(res_dir, server.model_name, res_index)
-        for k in range(n):
+        for k in range(sets):
             server.offline()
             if start is not None:
                 save_resource_set_server(cfg, res_dir, server.model_name, start + k,
-                                         server.info, _layer_res(server.layers))
+                                         server.model_info, _layer_res(server.layers))
     else:
         # online-only: negotiate the set id with the client and restore it
         index = server.select_resource(res_dir, res_index)
@@ -86,7 +85,7 @@ def run_server(host: str, port: int, model: torch.nn.Module, inshape: tuple, n: 
         print("Server online finished")
     t2 = time.time()
     conn.close()
-    _finish(server.layers, n, do_offline, do_online, t0, t1, t2)
+    _finish(server.layers, n, do_offline, do_online, cfg.common.show_detail, t0, t1, t2)
 
 
 def run_client(host: str, port: int, he, cfg, do_offline: bool, do_online: bool,
@@ -122,8 +121,8 @@ def run_client(host: str, port: int, he, cfg, do_offline: bool, do_online: bool,
                 wfolder=model_cfg.wfolder or None,
                 device=device,
             )
-            local_info = build_model_info(model, client.info.inshape)
-            server_hash = model_info_hash(client.info)
+            local_info = build_model_info(model, client.model_info.inshape)
+            server_hash = model_info_hash(client.model_info)
             local_hash = model_info_hash(local_info)
             if local_hash != server_hash:
                 raise RuntimeError(
@@ -137,15 +136,15 @@ def run_client(host: str, port: int, he, cfg, do_offline: bool, do_online: bool,
         print("Verify: client model matches server model info (hash {})".format(server_hash[:12]))
 
     if do_offline:
-        # offline/standard: interactive offline phase. In offline-only mode the
-        # client persists its half of n resource sets under the same ids the
-        # server derives (see run_server).
+        # offline-only: generate n resource sets; standard: a single set is
+        # generated and reused by all n online rounds.
+        sets = 1 if do_online else n
         start = None if do_online else next_index(res_dir, client.model_name, res_index)
-        for k in range(n):
+        for k in range(sets):
             client.offline()
             if start is not None:
                 save_resource_set_client(cfg, res_dir, client.model_name, start + k,
-                                         client.info, _layer_res(client.layers))
+                                         client.model_info, _layer_res(client.layers))
     else:
         # online-only: negotiate the set id with the server and restore it
         index = client.select_resource(res_index)
@@ -171,4 +170,4 @@ def run_client(host: str, port: int, he, cfg, do_offline: bool, do_online: bool,
         print("Client online finished")
     t2 = time.time()
     s.close()
-    _finish(client.layers, n, do_offline, do_online, t0, t1, t2)
+    _finish(client.layers, n, do_offline, do_online, cfg.common.show_detail, t0, t1, t2)

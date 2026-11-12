@@ -111,9 +111,9 @@ def test_constructors_do_no_io():
 
     inshape, model = registry.load("poc-1", seed=0)
     client = Client(BoomSocket(), load_config())
-    assert client.info is None and client.layers == []
+    assert client.model_info is None and client.layers == []
     server = Server(BoomSocket(), model, inshape, load_config())
-    assert server.info is None and server.layers == []
+    assert server.model_info is None and server.layers == []
 
 
 def test_model_info_wire_roundtrip():

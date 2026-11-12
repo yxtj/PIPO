@@ -22,7 +22,7 @@ class Server():
         self.inshape = inshape
         self.cfg = cfg
         self.model_name = model_name
-        self.info = None
+        self.model_info = None
         self.he = None
         self.layers = []
         self.linears = []
@@ -36,10 +36,10 @@ class Server():
         """Parse the model, send its info to the client, and build server layers."""
         if self.model_name is None:
             self.model_name = self.cfg.common.model.name
-        self.info = build_model_info(self.model, self.inshape)
-        send_model_info(self.socket, self.model_name, self.info)
+        self.model_info = build_model_info(self.model, self.inshape)
+        send_model_info(self.socket, self.model_name, self.model_info)
         print("Model info sent: {} ({} layers, input {})".format(
-            self.model_name, len(self.info.steps), tuple(self.inshape)))
+            self.model_name, len(self.model_info.steps), tuple(self.inshape)))
         # one shared engine for all layers; the client sends its HE context
         # once, right after receiving the model info (empty for NoHE)
         self.he = create_he(*he_engine_args(self.cfg))
@@ -63,7 +63,7 @@ class Server():
     def select_resource(self, res_dir, resource_id: int = None) -> int:
         """Online mode: announce the available resource-set ids and receive
         the one the client picked. Must run after setup()."""
-        if self.info is None:
+        if self.model_info is None:
             raise RuntimeError("Server.setup() must be called before select_resource()")
         available = list_indices(res_dir, self.model_name)
         if not available:
@@ -85,9 +85,9 @@ class Server():
     def restore_resource(self, res_dir, resource_id: int) -> None:
         """Online mode: load this side's resource file and set the layers up
         from it instead of drawing fresh randomness."""
-        if self.info is None:
+        if self.model_info is None:
             raise RuntimeError("Server.setup() must be called before restore()")
-        entries = load_resource_set_server(self.cfg, res_dir, self.model_name, resource_id, self.info)
+        entries = load_resource_set_server(self.cfg, res_dir, self.model_name, resource_id, self.model_info)
         self.setup_layers(res=entries)
         print("Server resources restored (set {})".format(resource_id))
 
@@ -98,7 +98,7 @@ class Server():
         order matters, because each layer's setup derives its propagated
         state (mlast / rplast / kin) from the previous, already-restored
         layer's protocol."""
-        if self.info is None:
+        if self.model_info is None:
             raise RuntimeError("Server.setup() must be called before setup_layers()")
         last_non_local = util.find_last_non_local_layer(len(self.layers), self.locals)
         last_lyr = None
@@ -129,7 +129,7 @@ class Server():
         """Standard offline phase: per-layer setup interleaved with the
         interactive offline round. May be called repeatedly (one resource set
         per call)."""
-        if self.info is None:
+        if self.model_info is None:
             raise RuntimeError("Server.setup() must be called before offline()")
         last_non_local = util.find_last_non_local_layer(len(self.layers), self.locals)
         last_lyr = None
@@ -138,7 +138,7 @@ class Server():
             name = lyr.__class__.__name__
             print('  offline {}: {}(inshape={}, outshape={}) ...'.format(i, name, lyr.ishape, lyr.oshape))
             # setup
-            lyr.setup(last_lyr, is_last_layer=(i == last_non_local))
+            lyr.setup(last_lyr, is_last_layer=(i == last_non_local), **self.pro_args)
             last_lyr = lyr
             # offline
             data = lyr.offline() # get the input of this layer (i-th intermediate result)
@@ -149,7 +149,7 @@ class Server():
                         self.layers[j].update_offline(i, data)
 
     def online(self):
-        if self.info is None:
+        if self.model_info is None:
             raise RuntimeError("Server.setup() must be called before online()")
         for i, lyr in enumerate(self.layers):
             data = lyr.online() # get the input of this layer (i-th intermediate result)

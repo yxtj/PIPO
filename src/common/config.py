@@ -81,6 +81,8 @@ class CommonConfig:
     mode: str = "standard"
     # HE in the offline phase (backend via common.he)
     use_he: bool = False
+    # print the per-layer statistics before the summary table
+    show_detail: bool = False
     he: HEConfig = field(default_factory=HEConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     resource: ResourceConfig = field(default_factory=ResourceConfig)
@@ -146,7 +148,6 @@ CONFIG_ARGS = [
     ("--port", "common.port"),
     ("--device", "common.device"),
     ("--n", "common.n"),
-    ("--mode", "common.mode", {"choices": ["offline", "standard", "online"]}),
     ("--model", "common.model.name"),
     ("--seed", "common.model.seed"),
     ("--wfile", "common.model.wfile"),
@@ -155,6 +156,7 @@ CONFIG_ARGS = [
     ("--res-index", "common.resource.index"),
     ("--protocol", "server.protocol.name"),
     ("--pad-ratio", "server.protocol.pad_ratio"),
+    ("--show-detail", "common.show_detail"),
     ("--use-he", "common.use_he"),
     ("--verify", "client.verify"),
 ]

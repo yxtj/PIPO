@@ -263,7 +263,7 @@ def find_last_non_local_layer(num_layer, local_layers):
     return -1
 
 
-def analyze_stat(layers, n):
+def analyze_stat(layers, show=True):
     s_total = Stat()
     s_relu = Stat()
     s_linear = Stat()
@@ -272,7 +272,8 @@ def analyze_stat(layers, n):
     s_pool = Stat()
     s_sc = Stat()
     for i, lyr in enumerate(layers):
-        print("  Layer {} {}: {}".format(i, lyr.__class__.__name__, lyr.stat))
+        if show:
+            print("  Layer {} {}: {}".format(i, lyr.__class__.__name__, lyr.stat))
         s_total += lyr.stat
         if isinstance(lyr, (layer.ReLUServer, layer.ReLUClient,
                             layer.SigmoidServer, layer.SigmoidClient,

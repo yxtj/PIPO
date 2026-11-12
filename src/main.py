@@ -1,4 +1,4 @@
-"""PIPO launcher: `python -m src.main server|client [options]`."""
+"""PIPO launcher: `python -m src.main <role> [mode] [options]`."""
 
 import argparse
 
@@ -8,8 +8,11 @@ from src.heutil import create_he
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="pipo", description="PIPO privacy-preserving inference")
-    parser.add_argument("role", nargs="?", choices=["server", "client"],
+    parser.add_argument("role", choices=["server", "client"],
                         help="run as server or client")
+    parser.add_argument("mode", nargs="?", default=argparse.SUPPRESS,
+                        choices=["offline", "standard", "online"],
+                        help="offline | standard | online (default: from config, usually standard)")
     parser.add_argument("--config", default=None, help="config file (default: config.toml)")
     add_config_args(parser)
     return parser.parse_args()
@@ -19,6 +22,9 @@ def main():
     args = parse_args()
     cfg = load_config(args.config)
     apply_args(cfg, args)
+    # positional mode: overrides the config value only when given on the CLI
+    if hasattr(args, "mode"):
+        cfg.common.mode = args.mode
     common = cfg.common
     # offline: generate and persist resources; standard: offline + online,
     # not persisted; online: only restore

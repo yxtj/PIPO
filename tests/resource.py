@@ -64,7 +64,7 @@ def run_roundtrip(model_name, protocol='padscaleshuffle', seed=0, device='cpu'):
         #    its half, the in-process client persists its own half
         port = _free_port()
         out, err = tempfile.TemporaryFile(), tempfile.TemporaryFile()
-        args = [sys.executable, '-m', 'src.main', 'server', '--mode', 'offline',
+        args = [sys.executable, '-m', 'src.main', 'server', 'offline',
                 '--res-dir', res_dir, '--model', model_name, '--protocol', protocol,
                 '--port', str(port), '--device', device]
         server = subprocess.Popen(args, cwd=str(PROJECT_ROOT), stdout=out, stderr=err)
@@ -80,7 +80,7 @@ def run_roundtrip(model_name, protocol='padscaleshuffle', seed=0, device='cpu'):
             start = next_index(res_dir, client.model_name, None)
             client.offline()
             save_resource_set_client(cfg, res_dir, client.model_name, start,
-                                     client.info, _layer_res(client.layers))
+                                     client.model_info, _layer_res(client.layers))
             c.close()
         finally:
             _wait_server(server, err)
@@ -109,7 +109,7 @@ def run_roundtrip(model_name, protocol='padscaleshuffle', seed=0, device='cpu'):
             data = data.to(device)
 
         out, err = tempfile.TemporaryFile(), tempfile.TemporaryFile()
-        args = [sys.executable, '-m', 'src.main', 'server', '--mode', 'online',
+        args = [sys.executable, '-m', 'src.main', 'server', 'online',
                 '--res-dir', res_dir, '--res-index', '1',
                 '--model', model_name, '--n', '2', '--protocol', protocol,
                 '--port', str(port), '--device', device]
