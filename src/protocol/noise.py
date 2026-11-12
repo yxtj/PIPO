@@ -8,7 +8,6 @@ import numpy as np
 import src.comm as comm
 from src.heutil import HEEngine
 from src.layer_basic.stat import Stat
-from src.common.config import get_config
 
 __ALL__ = ['ProtocolClient', 'ProtocolServer']
 
@@ -61,11 +60,11 @@ class ProtocolServer(ProBaseServer):
                 m = 1.0
         self.s = self._gen_add_share_(s, oshape)
         self.m = self._gen_mul_share_(m, oshape)
-        # the noise sigma is a protocol parameter (persisted in the resource
-        # files' protocol_args), not an offline random value
-        sigma = kwargs.get('noise_sigma', get_config().server.protocol.noise_sigma)
+        # noise sigma: a protocol parameter (persisted in protocol_args), not
+        # an offline random value
+        sigma = kwargs['noise_sigma']
         assert isinstance(sigma, (int, float)) and sigma > 0, \
-            "noise protocol requires a positive noise_sigma (server.protocol.noise_sigma)"
+            "noise protocol requires a positive noise_sigma"
         self.noise_sigma = sigma
         
     def recv_offline(self) -> Union[torch.Tensor, np.ndarray]:

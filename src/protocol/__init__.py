@@ -1,4 +1,4 @@
-from src.common.config import get_config
+import importlib
 
 AVAILABLE_PROTOCOLS = ['plaintext', 'scale', 'shuffle', 'pad', 'padshuffle',
                        'scaleshuffle', 'padscaleshuffle', 'noise']
@@ -12,22 +12,9 @@ def validate_protocol(name: str) -> str:
         )
     return name
 
-PROTOCOL = get_config().server.protocol.name
-validate_protocol(PROTOCOL)
 
-if PROTOCOL == 'plaintext':
-    from .plaintext import *
-elif PROTOCOL == 'scale':
-    from .scale import *
-elif PROTOCOL == 'shuffle':
-    from .shuffle import *
-elif PROTOCOL == 'pad':
-    from .pad import *
-elif PROTOCOL == 'padshuffle':
-    from .padshuffle import *
-elif PROTOCOL == 'scaleshuffle':
-    from .scaleshuffle import *
-elif PROTOCOL == 'padscaleshuffle':
-    from .padscaleshuffle import *
-elif PROTOCOL == 'noise':
-    from .noise import *
+def load_protocol(name: str):
+    """(ProtocolServer, ProtocolClient) classes of the named protocol variant."""
+    validate_protocol(name)
+    mod = importlib.import_module("." + name, __name__)
+    return mod.ProtocolServer, mod.ProtocolClient

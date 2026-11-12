@@ -30,14 +30,13 @@ def run_compare(model_name, protocol='scale', n=1, seed=0, wfile=None, device='c
 
     Returns a dict with result / reference / diff metrics / timings.
     """
-    from src.common.config import load_config, set_config
+    from src.common.config import load_config
 
     cfg = load_config()
     cfg.server.protocol.name = protocol
     cfg.common.use_he = False
     cfg.common.model.wfile = wfile or ''
     cfg.common.device = device
-    set_config(cfg)
 
     torch.manual_seed(seed)
     inshape, model = registry.load(
@@ -64,7 +63,7 @@ def run_compare(model_name, protocol='scale', n=1, seed=0, wfile=None, device='c
         c = _connect(port)
         # the client builds its layers from the server-sent model info; the
         # local model above is only the plaintext reference
-        client = Client(c, he=None)
+        client = Client(c, cfg, he=None)
         client.setup()
         client.offline()
         t0 = time.time()

@@ -1,78 +1,31 @@
-"""PIPO launcher: `python -m src.main server|client [options]`.
-
-Replaces the old example/ scripts: the picked model and all launch parameters
-come from config.toml / CLI arguments.
-"""
+"""PIPO launcher: `python -m src.main server|client [options]`."""
 
 import argparse
 
-from src.common.config import apply_args, he_engine_args, load_config, set_config
+from src.common.config import add_config_args, apply_args, he_engine_args, load_config
 from src.heutil import create_he
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="pipo", description="PIPO privacy-preserving inference")
-    parser.add_argument("role", nargs="?", default="server", choices=["server", "client"],
+    parser.add_argument("role", nargs="?", choices=["server", "client"],
                         help="run as server or client")
     parser.add_argument("--config", default=None, help="config file (default: config.toml)")
-    parser.add_argument("--mode", dest="run_mode", default=argparse.SUPPRESS,
-                        choices=["offline", "standard", "online"],
-                        help="run mode: offline (generate and persist resources), "
-                             "standard (offline + online, resources not persisted), "
-                             "online (restore persisted resources)")
-    for flag, dest in [
-        ("--host", "host"), ("--port", "port"), ("--device", "device"),
-        ("--model", "model"), ("--seed", "seed"),
-        ("--wfile", "wfile"), ("--wfolder", "wfolder"),
-        ("--protocol", "protocol"), ("--pad-ratio", "pad_ratio"),
-        ("--res-dir", "res_dir"), ("--res-index", "res_index"),
-    ]:
-        converter = {"port": int, "seed": int, "pad_ratio": float,
-                     "res_index": int}.get(dest)
-        if converter:
-            parser.add_argument(flag, default=argparse.SUPPRESS, type=converter)
-        else:
-            parser.add_argument(flag, default=argparse.SUPPRESS)
-    parser.add_argument("--n", default=argparse.SUPPRESS, type=int,
-                        help="standard/online: number of online rounds; "
-                             "offline: number of resource sets to generate")
-    parser.add_argument("--use-he", dest="use_he", action="store_true", default=argparse.SUPPRESS)
-    parser.add_argument("--verify", dest="verify", action="store_true", default=argparse.SUPPRESS)
+    add_config_args(parser)
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     cfg = load_config(args.config)
-    mapping = {
-        "common.host": "host",
-        "common.port": "port",
-        "common.device": "device",
-        "common.n": "n",
-        "common.mode": "run_mode",
-        "common.use_he": "use_he",
-        "common.model.name": "model",
-        "common.model.seed": "seed",
-        "common.model.wfile": "wfile",
-        "common.model.wfolder": "wfolder",
-        "common.resource.dir": "res_dir",
-        "common.resource.index": "res_index",
-        "server.protocol.name": "protocol",
-        "server.protocol.pad_ratio": "pad_ratio",
-        "client.verify": "verify",
-    }
-    cfg = apply_args(cfg, args, mapping)
+    apply_args(cfg, args)
     common = cfg.common
-    mode = common.mode
-    if mode not in ("offline", "standard", "online"):
-        raise ValueError(
-            "invalid run mode {!r} (expected offline | standard | online)".format(mode))
-    # 'offline' persists the generated resources, 'standard' generates them but
-    # does not persist, 'online' only loads them; both roles take the same pair
-    # of flags so they run the same subset of phases
-    do_offline = mode in ("offline", "standard")
-    do_online = mode in ("standard", "online")
-    set_config(cfg)
+    # offline: generate and persist resources; standard: offline + online,
+    # not persisted; online: only restore
+    if common.mode not in ("offline", "standard", "online"):
+        raise ValueError("invalid run mode {!r} (offline | standard | online)".format(common.mode))
+    do_offline = common.mode in ("offline", "standard")
+    do_online = common.mode in ("standard", "online")
 
     if args.role == "server":
         # late imports so that the protocol variant is chosen from the final config

@@ -17,7 +17,6 @@ from pathlib import Path
 
 import torch
 
-from src.common.config import get_config
 from src.common.model_info_io import model_info_hash
 from src.common.types import ModelInfo
 
@@ -76,8 +75,7 @@ def choose_index(available, resource_id: int = None) -> int:
     return chosen
 
 
-def _identity(model_name: str, info: ModelInfo) -> dict:
-    cfg = get_config()
+def _identity(cfg, model_name: str, info: ModelInfo) -> dict:
     return {
         "version": VERSION,
         "model_name": model_name,
@@ -87,9 +85,9 @@ def _identity(model_name: str, info: ModelInfo) -> dict:
     }
 
 
-def _save(res_dir, model_name: str, index: int, info: ModelInfo, role: str,
+def _save(cfg, res_dir, model_name: str, index: int, info: ModelInfo, role: str,
           entries: list) -> None:
-    identity = _identity(model_name, info)
+    identity = _identity(cfg, model_name, info)
     d = model_resource_dir(res_dir, model_name)
     d.mkdir(parents=True, exist_ok=True)
     path = d / (_stem(index) + "_" + role + ".pt")
@@ -97,12 +95,12 @@ def _save(res_dir, model_name: str, index: int, info: ModelInfo, role: str,
     print("Resources saved: {} side of set {} under {}".format(role, index, d))
 
 
-def _load(res_dir, model_name: str, index: int, info: ModelInfo, role: str) -> list:
+def _load(cfg, res_dir, model_name: str, index: int, info: ModelInfo, role: str) -> list:
     path = model_resource_dir(res_dir, model_name) / (_stem(index) + "_" + role + ".pt")
     if not path.exists():
         raise FileNotFoundError("resource file missing: {}".format(path))
     payload = torch.load(path, weights_only=True, map_location="cpu")
-    for key, want in _identity(model_name, info).items():
+    for key, want in _identity(cfg, model_name, info).items():
         got = payload.get(key)
         if got != want:
             raise ValueError(
@@ -115,25 +113,25 @@ def _load(res_dir, model_name: str, index: int, info: ModelInfo, role: str) -> l
     return payload["layers"]
 
 
-def save_resource_set_server(res_dir, model_name: str, index: int, info: ModelInfo,
+def save_resource_set_server(cfg, res_dir, model_name: str, index: int, info: ModelInfo,
                              entries: list) -> None:
     """Write the server side of one resource set."""
-    _save(res_dir, model_name, index, info, "server", entries)
+    _save(cfg, res_dir, model_name, index, info, "server", entries)
 
 
-def save_resource_set_client(res_dir, model_name: str, index: int, info: ModelInfo,
+def save_resource_set_client(cfg, res_dir, model_name: str, index: int, info: ModelInfo,
                              entries: list) -> None:
     """Write the client side of one resource set."""
-    _save(res_dir, model_name, index, info, "client", entries)
+    _save(cfg, res_dir, model_name, index, info, "client", entries)
 
 
-def load_resource_set_server(res_dir, model_name: str, index: int, info: ModelInfo) -> list:
+def load_resource_set_server(cfg, res_dir, model_name: str, index: int, info: ModelInfo) -> list:
     """Load the server side of one resource set, validating the identity
     against the current run (model structure, protocol variant/parameters)."""
-    return _load(res_dir, model_name, index, info, "server")
+    return _load(cfg, res_dir, model_name, index, info, "server")
 
 
-def load_resource_set_client(res_dir, model_name: str, index: int, info: ModelInfo) -> list:
+def load_resource_set_client(cfg, res_dir, model_name: str, index: int, info: ModelInfo) -> list:
     """Load the client side of one resource set, validating the identity
     against the current run (model structure, protocol variant/parameters)."""
-    return _load(res_dir, model_name, index, info, "client")
+    return _load(cfg, res_dir, model_name, index, info, "client")

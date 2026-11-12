@@ -58,7 +58,7 @@ def run_server(host: str, port: int, model: torch.nn.Module, inshape: tuple, n: 
     conn, addr = s.accept()
     print("Client connected from: {}".format(addr))
     t0 = time.time()
-    server = Server(conn, model, inshape, model_name=model_name)
+    server = Server(conn, model, inshape, cfg, model_name=model_name)
     server.setup()
     print("Server is ready")
 
@@ -71,12 +71,12 @@ def run_server(host: str, port: int, model: torch.nn.Module, inshape: tuple, n: 
         for k in range(n):
             server.offline()
             if start is not None:
-                save_resource_set_server(res_dir, server.model_name, start + k,
+                save_resource_set_server(cfg, res_dir, server.model_name, start + k,
                                          server.info, _layer_res(server.layers))
     else:
         # online-only: negotiate the set id with the client and restore it
         index = server.select_resource(res_dir, res_index)
-        server.restore(res_dir, index)
+        server.restore_resource(res_dir, index)
     t1 = time.time()
     print("Server offline finished")
 
@@ -96,11 +96,11 @@ def run_client(host: str, port: int, he, cfg, do_offline: bool, do_online: bool,
     device = cfg.common.device
     res_dir = cfg.common.resource.dir
     res_index = cfg.common.resource.index or None
-    # connect to server
+    # the server is expected to be up (default startup order: server first)
     s = socket.create_connection((host, port))
     print("Client is connecting to {}:{}".format(host, port))
     t0 = time.time()
-    client = Client(s, he=he)
+    client = Client(s, cfg, he=he)
     client.setup()
     print("Client is ready")
     inshape = client.inshape
@@ -144,12 +144,12 @@ def run_client(host: str, port: int, he, cfg, do_offline: bool, do_online: bool,
         for k in range(n):
             client.offline()
             if start is not None:
-                save_resource_set_client(res_dir, client.model_name, start + k,
+                save_resource_set_client(cfg, res_dir, client.model_name, start + k,
                                          client.info, _layer_res(client.layers))
     else:
         # online-only: negotiate the set id with the server and restore it
         index = client.select_resource(res_index)
-        client.restore(res_dir, index)
+        client.restore_resource(res_dir, index)
     t1 = time.time()
     print("Client offline finished")
 

@@ -1,5 +1,4 @@
 from .base import LayerClient, LayerServer
-from .base import ProtocolServer
 
 from socket import socket
 from typing import Union
@@ -49,7 +48,7 @@ class MaxPoolServer(LayerServer):
         super().__init__(socket, ishape, oshape, he, layer, device)
         self.stride_shape = stride_shape
         # make a protocol for pooling (its output shape is the same as the input shape)
-        self.protocol_pool = None # ProtocolServer(self.socket, self.stat, self.he, self.device)
+        self.protocol_pool = None # built in setup() via gen_mpooling
         # persisted values of the pooling sub-protocol, consumed by setup()
         # when restoring offline resources (run mode 'online')
         self._pool_res = None
@@ -69,13 +68,13 @@ class MaxPoolServer(LayerServer):
         res["protocol_pool"] = self.protocol_pool.save_res()
         return res
 
-    def setup_res(self, last_lyr: LayerServer, is_last_layer: bool, entry: dict) -> None:
+    def setup_res(self, last_lyr: LayerServer, is_last_layer: bool, entry: dict, **kwargs) -> None:
         # gen_mpooling runs inside setup(): it must reuse the persisted pool
         # values (s / p_full) instead of drawing fresh randomness
         self._pool_res = entry.get('protocol_pool') or {}
         try:
             self.setup(last_lyr, is_last_layer=is_last_layer,
-                       **self.protocol.res_kwargs(entry.get('protocol') or {}))
+                       **self.protocol.res_kwargs(entry.get('protocol') or {}), **kwargs)
         finally:
             self._pool_res = None
         

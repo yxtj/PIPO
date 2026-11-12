@@ -2,21 +2,24 @@ import struct
 
 from src.comm.model_info import recv_model_info
 from src.comm.resource import recv_resource_ids, send_resource_id
-from src.common.config import get_config, he_engine_args
+from src.common.config import he_engine_args
 from src.heutil import create_he
 from src.system import util
 from src.system.resource import choose_index, load_resource_set_client
 
 
 class Client():
-    def __init__(self, socket, model=None, inshape=None, he=None):
+    def __init__(self, socket, cfg, model=None, inshape=None, he=None):
         # Constructors stay side-effect free: no recv, no layer construction.
         # setup() performs the model-info exchange and builds layers.
         self.socket = socket
+        self.cfg = cfg
         self.model = model
         self._inshape = inshape
         # a None engine (e.g. tests) falls back to the config-selected backend
-        self.he = he if he is not None else create_he(*he_engine_args(get_config()))
+        self.he = he if he is not None else create_he(*he_engine_args(cfg))
+        # protocol params (pad_ratio / noise_sigma) passed to layer setups
+        self.pro_args = cfg.server.protocol.extra_args()
         self.model_name = None
         self.info = None
         self.inshape = None
@@ -37,13 +40,14 @@ class Client():
             raise ValueError(
                 "client inshape {} does not match server model info {}".format(
                     tuple(self._inshape), tuple(self.inshape)))
-        device = get_config().common.device
+        device = self.cfg.common.device
         # send the HE context once, right after the model info: the server
         # reads it before building its layers (empty for the NoHE backend)
         b_ctx = self.he.to_bytes_context()
         self.socket.sendall(struct.pack('!i', len(b_ctx)) + b_ctx)
         self.layers, self.linears, self.shortcuts, self.locals = \
-            util.make_client_model_from_info(self.socket, self.info, self.he, device)
+            util.make_client_model_from_info(self.socket, self.info, self.he, device,
+                                             self.cfg.server.protocol.name)
         print("Model info received: {} ({} layers, input {})".format(
             self.model_name, len(self.layers), tuple(self.inshape)))
 
@@ -58,12 +62,12 @@ class Client():
         print("Resource set selected: {}".format(self.resource_id))
         return self.resource_id
 
-    def restore(self, res_dir, resource_id: int) -> None:
+    def restore_resource(self, res_dir, resource_id: int) -> None:
         """Online mode: load this side's resource file and set the layers up
         from it instead of drawing fresh randomness."""
         if self.info is None:
-            raise RuntimeError("Client.setup() must be called before restore()")
-        entries = load_resource_set_client(res_dir, self.model_name, resource_id, self.info)
+            raise RuntimeError("Client.setup() must be called before restore_resource()")
+        entries = load_resource_set_client(self.cfg, res_dir, self.model_name, resource_id, self.info)
         self.setup_layers(res=entries)
         print("Client resources restored (set {})".format(resource_id))
 
@@ -76,9 +80,9 @@ class Client():
         for i, lyr in enumerate(self.layers):
             print('  setup {}: {} ...'.format(i, lyr.__class__.__name__))
             if res is not None:
-                lyr.setup_res(res[i])
+                lyr.setup_res(res[i], **self.pro_args)
             else:
-                lyr.setup()
+                lyr.setup(**self.pro_args)
 
     def offline(self):
         if self.info is None:

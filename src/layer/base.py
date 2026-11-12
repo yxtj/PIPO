@@ -4,7 +4,6 @@ import torch
 import numpy as np
 
 from src.layer_basic import LayerCommon
-from src.protocol import ProtocolClient, ProtocolServer
 
 from src.heutil import HEEngine
 
@@ -19,8 +18,7 @@ class LayerClient(LayerCommon):
         super().__init__(socket, ishape, oshape, he, device)
         # self.is_input_layer = False
         # self.is_output_layer = False
-        self.protocol = ProtocolClient(socket, self.stat, he, device)
-    
+
     def setup(self, **kwargs):
         t = time.time()
         self.protocol.setup(self.ishape, self.oshape, ltype=self.ltype, **kwargs)
@@ -30,11 +28,10 @@ class LayerClient(LayerCommon):
         """Persisted resources of this layer (resource files)."""
         return {"protocol": self.protocol.save_res()}
 
-    def setup_res(self, entry: dict) -> None:
+    def setup_res(self, entry: dict, **kwargs) -> None:
         """setup() with restored offline resources (run mode 'online'):
-        the saved values are passed through setup kwargs, so every protocol
-        honors them exactly as in a fresh offline run."""
-        self.setup(**self.protocol.res_kwargs(entry.get('protocol') or {}))
+        saved values + setup kwargs (protocol params), same as a fresh run."""
+        self.setup(**self.protocol.res_kwargs(entry.get('protocol') or {}), **kwargs)
     
     def offline(self) -> None:
         t0 = time.time()
@@ -67,8 +64,7 @@ class LayerServer(LayerCommon):
         # client-side context is injected once before layers are built
         super().__init__(socket, ishape, oshape, he, device)
         self.layer = layer
-        self.protocol = ProtocolServer(socket, self.stat, self.he, device)
-    
+
     def setup(self, last_lyr: LayerCommon, is_last_layer: bool=False, **kwargs) -> None:
         t = time.time()
         assert last_lyr is None or isinstance(last_lyr, LayerServer)
@@ -87,13 +83,13 @@ class LayerServer(LayerCommon):
         """Persisted resources of this layer (resource files)."""
         return {"protocol": self.protocol.save_res()}
 
-    def setup_res(self, last_lyr: LayerCommon, is_last_layer: bool, entry: dict) -> None:
-        """setup() with restored offline resources (run mode 'online'): the
-        saved values are passed through setup kwargs, so every protocol
-        honors them exactly as in a fresh offline run (and the layer-to-layer
-        propagation of mlast / rplast / kin is recomputed by setup itself)."""
+    def setup_res(self, last_lyr: LayerCommon, is_last_layer: bool, entry: dict, **kwargs) -> None:
+        """setup() with restored offline resources (run mode 'online'):
+        saved values + setup kwargs (protocol params), same as a fresh run;
+        the layer-to-layer propagation (mlast / rplast / kin) is recomputed
+        by setup itself."""
         self.setup(last_lyr, is_last_layer=is_last_layer,
-                   **self.protocol.res_kwargs(entry.get('protocol') or {}))
+                   **self.protocol.res_kwargs(entry.get('protocol') or {}), **kwargs)
     
     def offline(self) -> np.ndarray:
         '''

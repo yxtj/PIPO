@@ -12,14 +12,12 @@ import pytest
 import torch.nn as nn
 
 from models import registry
-from src.common.config import load_config, set_config
+from src.common.config import load_config
 from src.common.model_info import build_model_info
 from src.common.model_info_io import model_info_from_json, model_info_hash, model_info_to_json
 from src.common.model_spec import build_client_module, build_client_specs
 from src.model.dag_model import AddOp, ConcatOp, JumpOp
 from src.system import Client, Server, util
-
-set_config(load_config())
 
 MODELS = [
     "poc-0-linear",
@@ -72,8 +70,8 @@ def test_make_client_model_from_info_matches_wrapper():
     inshape, model = registry.load("poc-6", seed=0)
     info = build_model_info(model, inshape)
     specs = build_client_specs(info)
-    layers, linears, shortcuts, locals_ = util.make_client_model_from_info(None, info, None, "cpu")
-    legacy = util.make_client_model(None, model, inshape, None)
+    layers, linears, shortcuts, locals_ = util.make_client_model_from_info(None, info, None, "cpu", "scale")
+    legacy = util.make_client_model(None, model, inshape, None, "cpu", "scale")
 
     assert [type(x).__name__ for x in layers] == [type(x).__name__ for x in legacy[0]]
     assert linears == legacy[1]
@@ -112,9 +110,9 @@ def test_constructors_do_no_io():
             raise AssertionError("constructor performed I/O")
 
     inshape, model = registry.load("poc-1", seed=0)
-    client = Client(BoomSocket())
+    client = Client(BoomSocket(), load_config())
     assert client.info is None and client.layers == []
-    server = Server(BoomSocket(), model, inshape)
+    server = Server(BoomSocket(), model, inshape, load_config())
     assert server.info is None and server.layers == []
 
 

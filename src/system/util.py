@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 from src.layer_basic.stat import Stat
-from src.common.config import get_config
+from src.protocol import load_protocol
 from src.common.model_info import compute_shapes
 from src.common.model_spec import build_client_module, build_client_specs
 from src.model.dag_model import AddOp, ConcatOp, DagModel, JumpOp
@@ -36,11 +36,11 @@ def compute_shape(model, inshape):
     return [(1,) + s for s in compute_shapes(model, inshape)]
 
 
-def make_client_model(socket, model, inshape, he):
+def make_client_model(socket, model, inshape, he, device, protocol):
     """Build client layers by parsing a local model directly (legacy path)."""
     modules, sources = flat_layers(model)
     shapes = compute_shape(model, inshape)
-    device = get_config().common.device
+    _, pc_cls = load_protocol(protocol)
     layers = []
     linears = [] # linear layers
     scl = {} # shortcut layers
@@ -102,12 +102,15 @@ def make_client_model(socket, model, inshape, he):
             raise Exception(msg)
         shortcuts[idx] = oidx
     # shortcuts is {shortcut layer idx: intermediate result idx}
+    for lyr in layers:
+        lyr.init_protocol(pc_cls)
     return layers, linears, shortcuts, locals
 
 
-def make_client_model_from_info(socket, info, he, device):
+def make_client_model_from_info(socket, info, he, device, protocol):
     """Build client layers from a server-parsed ModelInfo - no local model needed."""
     specs = build_client_specs(info)
+    _, pc_cls = load_protocol(protocol)
     layers = []
     linears = [] # linear layers
     scl = {} # shortcut layers
@@ -179,13 +182,15 @@ def make_client_model_from_info(socket, info, he, device):
             raise Exception(msg)
         shortcuts[idx] = oidx
     # shortcuts is {shortcut layer idx: intermediate result idx}
+    for lyr in layers:
+        lyr.init_protocol(pc_cls)
     return layers, linears, shortcuts, locals
 
 
-def make_server_model(socket, model, inshape, he):
+def make_server_model(socket, model, inshape, he, device, protocol):
     modules, sources = flat_layers(model)
     shapes = compute_shape(model, inshape)
-    device = get_config().common.device
+    ps_cls, _ = load_protocol(protocol)
     layers = []
     linears = [] # linear layers
     scl = {} # shortcut layers
@@ -246,6 +251,8 @@ def make_server_model(socket, model, inshape, he):
             raise Exception(msg)
         shortcuts[idx] = oidx
     # shortcuts is {shortcut layer idx: intermediate result idx}
+    for lyr in layers:
+        lyr.init_protocol(ps_cls)
     return layers, linears, shortcuts, locals
 
 

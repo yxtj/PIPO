@@ -17,7 +17,6 @@ import numpy as np
 import src.comm as comm
 from src.heutil import HEEngine
 from src.layer_basic.stat import Stat
-from src.common.config import get_config
 
 __ALL__ = ['ProtocolClient', 'ProtocolServer']
 
@@ -35,7 +34,7 @@ class ProtocolClient(ProBaseClient):
         super().setup(ishape, oshape, **kwargs)
         # no handshake: the client derives the pad count of the previous
         # layer's output from pad_ratio, exactly as the server computes it
-        self.kin = pad_count(int(np.prod(ishape)), get_config().server.protocol.pad_ratio)
+        self.kin = pad_count(int(np.prod(ishape)), kwargs['pad_ratio'])
         n = int(np.prod(ishape))
         self.r = self._gen_add_share_(kwargs.get('r'), (1, n + self.kin))
 
@@ -144,7 +143,7 @@ class ProtocolServer(ProBaseServer):
         self.m = self._gen_mul_share_(m, oshape)
         n = int(np.prod(oshape))
         if p is None:
-            ratio = get_config().server.protocol.pad_ratio
+            ratio = kwargs['pad_ratio']
             self.k = pad_count(n, ratio)
             self.p = gen_shuffle((1, n + self.k), device=self.device) # permutes data + pads
         elif isinstance(p, int):

@@ -1,18 +1,12 @@
-"""TOML configuration for the PIPO client/server CLIs.
+"""TOML config + CLI args for the PIPO client/server CLIs.
 
-``config.toml`` at the project root is the default config file; a custom path
-can be passed via ``--config``. One file drives both roles:
+``config.toml`` at the project root drives both roles (custom path via
+``--config``); CLI flags override it. The ``Config`` is a plain value
+object: load it once and pass it around explicitly (no global singleton).
 
-- ``[common]`` - shared settings (host, port, device, HE, n).
-- ``[common.model]`` - model name / seed / weights search path.
-- ``[client]`` - client settings.
-- ``[server]`` - server settings; ``[server.protocol]`` holds the protocol
-  variant and its parameters.
-
-Command-line arguments take precedence over the file: config-backed args are
-built with ``default=argparse.SUPPRESS`` so only flags the user actually typed
-land in the namespace, and ``apply_args`` copies them over the merged config
-(dotted paths like ``common.model.name``).
+CLI flags are declared once in ``CONFIG_ARGS``: dest derives from the flag
+(``-`` -> ``_``), the type from the dataclass default at the config path
+(bool -> store_true).
 """
 
 import argparse
@@ -25,31 +19,28 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG_FILE = PROJECT_ROOT / "config.toml"
 
 
-
 @dataclass
 class ModelConfig:
     name: str = "poc-1"
     seed: int = 0
-    # weights file (state dict); empty = search wfolder, then registry default
+    # weights file; empty = search wfolder, then registry default
     wfile: str = ""
-    # default directory searched for <model_name>.pt / <model_name>.pth
+    # default dir for <model_name>.pt / <model_name>.pth
     wfolder: str = "pretrained"
 
 
 @dataclass
 class ProtocolConfig:
-    # protocol variant: plaintext, scale, shuffle, pad, padshuffle,
-    # scaleshuffle, padscaleshuffle, noise
+    # plaintext | scale | shuffle | pad | padshuffle | scaleshuffle |
+    # padscaleshuffle | noise
     name: str = "scale"
-    # pad ratio for the pad / padshuffle / padscaleshuffle protocols (0 = no
-    # padding, 1 = as many pads as real elements)
+    # pad ratio for the pad protocols (0 = no pads, 1 = as many pads as real)
     pad_ratio: float = 0.0
     # Gaussian noise sigma for the noise protocol
     noise_sigma: float = 0.0
 
     def extra_args(self) -> dict:
-        """Protocol-specific parameters persisted into offline resource files
-        (empty for parameter-free protocols)."""
+        """Protocol kwargs persisted into offline resource files."""
         if self.name in ("pad", "padshuffle", "padscaleshuffle"):
             return {"pad_ratio": self.pad_ratio}
         if self.name == "noise":
@@ -59,16 +50,14 @@ class ProtocolConfig:
 
 @dataclass
 class ResourceConfig:
-    # root directory of the precomputed resources
     dir: str = "resources"
-    # resource set index to load (0 = the server picks a random available
-    # set) or to generate at (0 = the next free index)
+    # 0 = random set when loading / next free when generating
     index: int = 0
 
 
 @dataclass
 class HEBackendPyfhelConfig:
-    # Pyfhel CKKS context parameters, only read by the 'pyfhel' backend
+    # CKKS context parameters ('pyfhel' backend only)
     n: int = 8192
     scale: int = 2 ** 30
     qi_sizes: list = field(default_factory=lambda: [30] * 5)
@@ -76,8 +65,7 @@ class HEBackendPyfhelConfig:
 
 @dataclass
 class HEConfig:
-    # HE backend selected when use_he is enabled: "none" | "pyfhel";
-    # per-backend parameters live in their own subsection ([common.he.pyfhel])
+    # backend when use_he: "none" | "pyfhel" (params in [common.he.pyfhel])
     backend: str = "pyfhel"
     pyfhel: HEBackendPyfhelConfig = field(default_factory=HEBackendPyfhelConfig)
 
@@ -86,17 +74,12 @@ class HEConfig:
 class CommonConfig:
     host: str = "127.0.0.1"
     port: int = 8100
-    # device shared by the client and the server
     device: str = "cpu"
-    # standard/online: number of online inference rounds; offline: number of
-    # resource sets to generate in one run
+    # standard/online: online rounds; offline: resource sets per run
     n: int = 1
-    # run mode: "offline" = interactively generate and persist resources,
-    # "standard" = interactive offline + online phases (default, resources
-    # are not persisted), "online" = restore persisted resources and skip the
-    # offline phase
+    # offline | standard | online
     mode: str = "standard"
-    # whether to use HE in the offline phase (backend via common.he)
+    # HE in the offline phase (backend via common.he)
     use_he: bool = False
     he: HEConfig = field(default_factory=HEConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
@@ -120,6 +103,20 @@ class Config:
     server: ServerConfig = field(default_factory=ServerConfig)
 
 
+def _set_path(obj, path: str, value) -> None:
+    parts = path.split(".")
+    for part in parts[:-1]:
+        obj = getattr(obj, part)
+    setattr(obj, parts[-1], value)
+
+
+def _config_type(path: str):
+    obj = Config()
+    for part in path.split("."):
+        obj = getattr(obj, part)
+    return type(obj)
+
+
 def _merge(data: dict, target) -> None:
     for key, value in data.items():
         if isinstance(value, dict):
@@ -138,55 +135,55 @@ def load_config(path=None) -> Config:
         path = DEFAULT_CONFIG_FILE
     with open(path, "rb") as f:
         data = tomllib.load(f)
-    _merge(data.get("common", {}), cfg.common)
-    _merge(data.get("client", {}), cfg.client)
-    _merge(data.get("server", {}), cfg.server)
+    for section in ("common", "client", "server"):
+        _merge(data.get(section, {}), getattr(cfg, section))
     return cfg
 
 
-def _set_path(obj, path: str, value) -> None:
-    parts = path.split(".")
-    for part in parts[:-1]:
-        obj = getattr(obj, part)
-    setattr(obj, parts[-1], value)
+# CLI flags overriding config values: (flag, dotted config path[, argparse extras])
+CONFIG_ARGS = [
+    ("--host", "common.host"),
+    ("--port", "common.port"),
+    ("--device", "common.device"),
+    ("--n", "common.n"),
+    ("--mode", "common.mode", {"choices": ["offline", "standard", "online"]}),
+    ("--model", "common.model.name"),
+    ("--seed", "common.model.seed"),
+    ("--wfile", "common.model.wfile"),
+    ("--wfolder", "common.model.wfolder"),
+    ("--res-dir", "common.resource.dir"),
+    ("--res-index", "common.resource.index"),
+    ("--protocol", "server.protocol.name"),
+    ("--pad-ratio", "server.protocol.pad_ratio"),
+    ("--use-he", "common.use_he"),
+    ("--verify", "client.verify"),
+]
 
 
-def apply_args(config: Config, args: argparse.Namespace, mapping: dict[str, str]) -> Config:
-    """Copy CLI-provided values (present in ``args``) over the merged config."""
-    for path, dest in mapping.items():
-        if not hasattr(args, dest):
-            continue
-        _set_path(config, path, getattr(args, dest))
+def add_config_args(parser: argparse.ArgumentParser) -> None:
+    """Register the CONFIG_ARGS flags (SUPPRESS default: only typed flags land in args)."""
+    for flag, path, *extra in CONFIG_ARGS:
+        kwargs = dict(extra[0]) if extra else {}
+        kwargs["default"] = argparse.SUPPRESS
+        typ = _config_type(path)
+        if typ is bool:
+            parser.add_argument(flag, dest=flag[2:].replace("-", "_"), action="store_true", **kwargs)
+        else:
+            parser.add_argument(flag, dest=flag[2:].replace("-", "_"), type=typ, **kwargs)
+
+
+def apply_args(config: Config, args: argparse.Namespace) -> Config:
+    """Copy CLI-provided values over the merged config."""
+    for flag, path, *_ in CONFIG_ARGS:
+        dest = flag[2:].replace("-", "_")
+        if hasattr(args, dest):
+            _set_path(config, path, getattr(args, dest))
     return config
 
 
-# The effective config is set by the entry point (after CLI overrides are
-# applied) and read by library modules (protocol dispatch, layer base, the HE
-# engine factory) that need the HE backend / protocol variant without going
-# through main().
-_config: Config | None = None
-
-
-def set_config(cfg: Config) -> None:
-    global _config
-    _config = cfg
-
-
-def get_config() -> Config:
-    global _config
-    if _config is None:
-        _config = load_config()
-    return _config
-
-
 def he_engine_args(cfg: Config) -> tuple:
-    """(backend, params) for heutil.create_he, resolved from the config.
-
-    use_he=False maps to the 'none' backend; otherwise common.he.backend is
-    returned, together with the pyfhel context parameters when applicable.
-    Keeping this mapping here (not in heutil) is what lets the engine package
-    stay config-free.
-    """
+    """(backend, params) for heutil.create_he; use_he=False -> 'none'.
+    Kept here so the engine package stays config-free."""
     if not cfg.common.use_he:
         return "none", None
     backend = cfg.common.he.backend

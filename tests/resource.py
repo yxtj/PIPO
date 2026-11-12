@@ -44,10 +44,8 @@ def _wait_server(server, err):
 
 
 def run_roundtrip(model_name, protocol='padscaleshuffle', seed=0, device='cpu'):
-    from src.common.config import load_config, set_config
+    from src.common.config import load_config
 
-    # the config must be committed before the protocol modules are
-    # dynamically imported (src.protocol)
     res_dir = tempfile.mkdtemp(prefix='pipo_res_')
     cfg = load_config()
     cfg.server.protocol.name = protocol
@@ -55,7 +53,6 @@ def run_roundtrip(model_name, protocol='padscaleshuffle', seed=0, device='cpu'):
     cfg.common.device = device
     cfg.common.resource.dir = res_dir
     cfg.common.resource.index = 0
-    set_config(cfg)
 
     from src.system.resource import list_indices
 
@@ -72,10 +69,19 @@ def run_roundtrip(model_name, protocol='padscaleshuffle', seed=0, device='cpu'):
                 '--port', str(port), '--device', device]
         server = subprocess.Popen(args, cwd=str(PROJECT_ROOT), stdout=out, stderr=err)
         try:
-            from src.system.runner import run_client
+            from src.system import Client
+            from src.system.resource import next_index, save_resource_set_client
+            from src.system.runner import _layer_res
 
-            run_client('127.0.0.1', port, None, cfg,
-                       do_offline=True, do_online=False)
+            # real connection with retries (the server needs a moment to load)
+            c = _connect(port)
+            client = Client(c, cfg, he=None)
+            client.setup()
+            start = next_index(res_dir, client.model_name, None)
+            client.offline()
+            save_resource_set_client(cfg, res_dir, client.model_name, start,
+                                     client.info, _layer_res(client.layers))
+            c.close()
         finally:
             _wait_server(server, err)
             out.close()
@@ -112,12 +118,12 @@ def run_roundtrip(model_name, protocol='padscaleshuffle', seed=0, device='cpu'):
             from src.system import Client
 
             c = _connect(port)
-            client = Client(c, he=None)
+            client = Client(c, cfg, he=None)
             client.setup()
             # 3) negotiate the resource id with the server, then restore
             index = client.select_resource(1)
             assert index == 1, 'server announced resource set {}'.format(index)
-            client.restore(res_dir, index)
+            client.restore_resource(res_dir, index)
 
             # two online rounds on the same input must be identical
             with torch.no_grad():

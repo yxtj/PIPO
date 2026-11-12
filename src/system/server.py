@@ -5,7 +5,7 @@ import torch.nn as nn
 
 from src.comm.model_info import send_model_info
 from src.comm.resource import recv_resource_id, send_resource_ids
-from src.common.config import get_config, he_engine_args
+from src.common.config import he_engine_args
 from src.common.model_info import build_model_info
 from src.heutil import create_he
 from src.system import util
@@ -14,12 +14,13 @@ from src.system.resource import list_indices, load_resource_set_server
 
 class Server():
     def __init__(self, socket: socket.socket, model: nn.Module, inshape: tuple,
-                 model_name: str = None):
+                 cfg, model_name: str = None):
         # Constructors stay side-effect free: no I/O, no shape analysis, no
         # layer construction. setup() does all of that after construction.
         self.socket = socket
         self.model = model
         self.inshape = inshape
+        self.cfg = cfg
         self.model_name = model_name
         self.info = None
         self.he = None
@@ -28,24 +29,26 @@ class Server():
         self.shortcuts = {}
         self.locals = []
         self.dependency = {}
+        # protocol params (pad_ratio / noise_sigma) passed to layer setups
+        self.pro_args = cfg.server.protocol.extra_args()
 
     def setup(self):
         """Parse the model, send its info to the client, and build server layers."""
         if self.model_name is None:
-            self.model_name = get_config().common.model.name
+            self.model_name = self.cfg.common.model.name
         self.info = build_model_info(self.model, self.inshape)
         send_model_info(self.socket, self.model_name, self.info)
         print("Model info sent: {} ({} layers, input {})".format(
             self.model_name, len(self.info.steps), tuple(self.inshape)))
-        # one shared engine for all layers, backend/params resolved from the
-        # config here; the client sends its HE context once, right after
-        # receiving the model info (empty for NoHE)
-        self.he = create_he(*he_engine_args(get_config()))
+        # one shared engine for all layers; the client sends its HE context
+        # once, right after receiving the model info (empty for NoHE)
+        self.he = create_he(*he_engine_args(self.cfg))
         ctx_len = struct.unpack('!i', self.socket.recv(4))[0]
         b_ctx = self.socket.recv(ctx_len)
         self.he.from_bytes_context(b_ctx)
         self.layers, self.linears, self.shortcuts, self.locals = \
-            util.make_server_model(self.socket, self.model, self.inshape, self.he)
+            util.make_server_model(self.socket, self.model, self.inshape, self.he,
+                                   self.cfg.common.device, self.cfg.server.protocol.name)
         print("Model loaded {} layers: {} linear layers, {} local layers, {} shortcut layers.".format(
             len(self.layers), len(self.linears), len(self.locals), len(self.shortcuts)))
         # for shortcut layer: {fm idx: [shortcut layer idx]}
@@ -79,12 +82,12 @@ class Server():
         print("Resource set selected: {} (available: {})".format(chosen, available))
         return chosen
 
-    def restore(self, res_dir, resource_id: int) -> None:
+    def restore_resource(self, res_dir, resource_id: int) -> None:
         """Online mode: load this side's resource file and set the layers up
         from it instead of drawing fresh randomness."""
         if self.info is None:
             raise RuntimeError("Server.setup() must be called before restore()")
-        entries = load_resource_set_server(res_dir, self.model_name, resource_id, self.info)
+        entries = load_resource_set_server(self.cfg, res_dir, self.model_name, resource_id, self.info)
         self.setup_layers(res=entries)
         print("Server resources restored (set {})".format(resource_id))
 
@@ -105,9 +108,10 @@ class Server():
             # the last non-local layer hands its plaintext result to the
             # client, so the protocol must not mask or permute its output
             if res is not None:
-                lyr.setup_res(last_lyr, is_last_layer=(i == last_non_local), entry=res[i])
+                lyr.setup_res(last_lyr, is_last_layer=(i == last_non_local), entry=res[i],
+                              **self.pro_args)
             else:
-                lyr.setup(last_lyr, is_last_layer=(i == last_non_local))
+                lyr.setup(last_lyr, is_last_layer=(i == last_non_local), **self.pro_args)
             last_lyr = lyr
 
     def do_offline(self):

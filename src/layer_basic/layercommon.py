@@ -16,4 +16,9 @@ class LayerCommon():
         self.he = he
         self.device = device
         self.stat = Stat()
+        # protocol object; injected per role by util.make_* (init_protocol)
+        self.protocol = None
+
+    def init_protocol(self, pclass) -> None:
+        self.protocol = pclass(self.socket, self.stat, self.he, self.device)
     
