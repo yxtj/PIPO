@@ -14,7 +14,7 @@ from src.system.resource import list_indices, load_resource_set_server
 
 class Server():
     def __init__(self, socket: socket.socket, model: nn.Module, inshape: tuple,
-                 cfg, model_name: str = None):
+                 cfg, model_name: str = None, model_hash: str = None):
         # Constructors stay side-effect free: no I/O, no shape analysis, no
         # layer construction. setup() does all of that after construction.
         self.socket = socket
@@ -22,6 +22,7 @@ class Server():
         self.inshape = inshape
         self.cfg = cfg
         self.model_name = model_name
+        self.model_hash = model_hash
         self.model_info = None
         self.he = None
         self.layers = []
@@ -38,14 +39,16 @@ class Server():
             self.model_name = self.cfg.common.model.name
         self.model_info = build_model_info(self.model, self.inshape)
         send_model_info(self.socket, self.model_name, self.model_info)
-        print("Model info sent: {} ({} layers, input {})".format(
-            self.model_name, len(self.model_info.steps), tuple(self.inshape)))
-        # one shared engine for all layers; the client sends its HE context
-        # once, right after receiving the model info (empty for NoHE)
+        print("Model info sent: {} (hash {}, {} layers, input {})".format(
+            self.model_name, (self.model_hash or "-")[:12],
+            len(self.model_info.steps), tuple(self.inshape)))
+        
+        # shared HE engine for all layers; client sends its HE context (empty for NoHE)
         self.he = create_he(*he_engine_args(self.cfg))
         ctx_len = struct.unpack('!i', self.socket.recv(4))[0]
         b_ctx = self.socket.recv(ctx_len)
         self.he.from_bytes_context(b_ctx)
+
         self.layers, self.linears, self.shortcuts, self.locals = \
             util.make_server_model(self.socket, self.model, self.inshape, self.he,
                                    self.cfg.common.device, self.cfg.server.protocol.name)
@@ -113,17 +116,6 @@ class Server():
             else:
                 lyr.setup(last_lyr, is_last_layer=(i == last_non_local), **self.pro_args)
             last_lyr = lyr
-
-    def do_offline(self):
-        """Interactive offline phase (assumes setup_layers() has run)."""
-        data = None
-        for i, lyr in enumerate(self.layers):
-            data = lyr.offline() # get the input of this layer (i-th intermediate result)
-            # handle shortcut connections: update the input buffer of shortcut-end layer
-            if i in self.dependency:
-                for j in self.dependency[i]:
-                    if j != i: # the own input fm is passed directly to the layer itself
-                        self.layers[j].update_offline(i, data)
 
     def offline(self):
         """Standard offline phase: per-layer setup interleaved with the

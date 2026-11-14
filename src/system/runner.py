@@ -46,11 +46,12 @@ def _finish(layers, n, do_offline, do_online, show_detail, t0, t1, t2):
     show_stat(layers, n, do_offline, do_online, show_layers=show_detail)
 
 
-def run_server(host: str, port: int, model: torch.nn.Module, inshape: tuple, n: int,
-               cfg, do_offline: bool, do_online: bool, model_name: str = None):
+def run_server(host: str, port: int, n: int, cfg, do_offline: bool, do_online: bool):
 
     res_dir = cfg.common.resource.dir
     res_index = cfg.common.resource.index or None
+
+    name, inshape, model, mhash = util.load_model(cfg)
 
     # listening on port
     s = socket.create_server((host, port))
@@ -58,13 +59,13 @@ def run_server(host: str, port: int, model: torch.nn.Module, inshape: tuple, n: 
     conn, addr = s.accept()
     print("Client connected from: {}".format(addr))
     t0 = time.time()
-    server = Server(conn, model, inshape, cfg, model_name=model_name)
+    server = Server(conn, model, inshape, cfg, model_name=name, model_hash=mhash)
     server.setup()
     print("Server is ready")
 
     if do_offline:
-        # offline-only: generate n resource sets; standard: a single set is
-        # generated and reused by all n online rounds.
+        # offline-only: generate n resource sets; 
+        # standard: generate a single set is and reused by all n online rounds.
         sets = 1 if do_online else n
         start = None if do_online else next_index(res_dir, server.model_name, res_index)
         for k in range(sets):
@@ -81,7 +82,7 @@ def run_server(host: str, port: int, model: torch.nn.Module, inshape: tuple, n: 
 
     if do_online:
         for _ in range(n):
-                server.online()
+            server.online()
         print("Server online finished")
     t2 = time.time()
     conn.close()
@@ -108,22 +109,11 @@ def run_client(host: str, port: int, he, cfg, do_offline: bool, do_online: bool,
     # used for inference always come from the server-sent model info
     model = None
     if verify:
-        from models import registry
-        from src.common.model_info import build_model_info
         from src.common.model_info_io import model_info_hash
 
         try:
-            model_cfg = cfg.common.model
-            _, model = registry.load(
-                client.model_name,
-                seed=model_cfg.seed,
-                wfile=model_cfg.wfile or None,
-                wfolder=model_cfg.wfolder or None,
-                device=device,
-            )
-            local_info = build_model_info(model, client.model_info.inshape)
+            _, _, model, local_hash = util.load_model(cfg, name=client.model_name)
             server_hash = model_info_hash(client.model_info)
-            local_hash = model_info_hash(local_info)
             if local_hash != server_hash:
                 raise RuntimeError(
                     "client model {!r} structure differs from the server model "

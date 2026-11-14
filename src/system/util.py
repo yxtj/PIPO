@@ -10,6 +10,29 @@ from src.model.dag_model import AddOp, ConcatOp, DagModel, JumpOp
 import src.layer as layer
 
 
+def load_model(cfg, name=None):
+    """Load the config-selected model; returns (name, inshape, model, hash).
+
+    hash is the model_info sha256 used by verify and the resource files.
+    Registry imports stay lazy: models load only after the final config.
+    """
+    from models import registry
+    from src.common.model_info import build_model_info
+    from src.common.model_info_io import model_info_hash
+
+    m = cfg.common.model
+    name = name or m.name
+    inshape, model = registry.load(
+        name,
+        seed=m.seed,
+        wfile=m.wfile or None,
+        wfolder=m.wfolder or None,
+        device=cfg.common.device,
+    )
+    mhash = model_info_hash(build_model_info(model, inshape))
+    return name, inshape, model, mhash
+
+
 def flat_layers(model):
     """Flatten a (possibly nested) DagModel into its leaf execution list.
 
