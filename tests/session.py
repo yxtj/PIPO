@@ -65,6 +65,7 @@ def run_compare(model_name, protocol='scale', n=1, seed=0, wfile=None, device='c
         # local model above is only the plaintext reference
         client = Client(c, cfg, he=None)
         client.setup()
+        client.prepare()
         client.offline()
         t0 = time.time()
         res = None

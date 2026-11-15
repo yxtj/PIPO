@@ -35,9 +35,9 @@ class ProtocolConfig:
     # padscaleshuffle | noise
     name: str = "scale"
     # pad ratio for the pad protocols (0 = no pads, 1 = as many pads as real)
-    pad_ratio: float = 0.0
+    pad_ratio: float = 1.0
     # Gaussian noise sigma for the noise protocol
-    noise_sigma: float = 0.0
+    noise_sigma: float = 1.0
 
     def extra_args(self) -> dict:
         """Protocol kwargs persisted into offline resource files."""

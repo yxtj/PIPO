@@ -25,6 +25,8 @@ class Client():
         self.inshape = None
         # set only in run mode 'online', by select_resource()
         self.resource_id = None
+        # set by prepare_protocols(); offline() requires it and clears it
+        self._protocols_ready = False
         self.layers = []
         self.linears = []
         self.shortcuts = {}
@@ -61,35 +63,39 @@ class Client():
         print("Resource set selected: {}".format(self.resource_id))
         return self.resource_id
 
-    def restore_resource(self, res_dir, resource_id: int) -> None:
-        """Online mode: load this side's resource file and set the layers up
-        from it instead of drawing fresh randomness."""
+    def restore_resource(self, res_dir, resource_id: int) -> list:
+        """Online mode: load this side's resource file and return its per-layer
+        resource entries; the caller then runs prepare(resources) instead of
+        drawing fresh randomness."""
         if self.model_info is None:
             raise RuntimeError("Client.setup() must be called before restore_resource()")
-        entries = load_resource_set_client(self.cfg, res_dir, self.model_name, resource_id, self.model_info)
-        self.setup_layers(res=entries)
+        resources = load_resource_set_client(self.cfg, res_dir, self.model_name, resource_id, self.model_info)
         print("Client resources restored (set {})".format(resource_id))
+        return resources
 
-    def setup_layers(self, res: list = None):
-        """Per-layer protocol setup. With res (the layer entries of a loaded
-        resource set, run mode 'online') the persisted masks replace fresh
-        randomness through setup kwargs."""
+    def prepare(self, resources: list = None):
+        """Per-layer protocol preparation (masks and propagated state). If resources is None, draw fresh randomness"""
         if self.model_info is None:
-            raise RuntimeError("Client.setup() must be called before setup_layers()")
+            raise RuntimeError("Client.setup() must be called before prepare()")
         for i, lyr in enumerate(self.layers):
             print('  setup {}: {} ...'.format(i, lyr.__class__.__name__))
-            if res is not None:
-                lyr.setup_res(res[i], **self.pro_args)
+            if resources is not None:
+                lyr.setup_res(resources[i], **self.pro_args)
             else:
                 lyr.setup(**self.pro_args)
+        self._protocols_ready = True
 
     def offline(self):
+        """Per-layer offline round only; call prepare() first."""
         if self.model_info is None:
             raise RuntimeError("Client.setup() must be called before offline()")
-        self.setup_layers()
+        if not self._protocols_ready:
+            raise RuntimeError("Client.prepare() must be called before offline()")
         for i, lyr in enumerate(self.layers):
             print('  offline {}: {} ...'.format(i, lyr.__class__.__name__))
             lyr.offline()
+        # one resource set per prepare: the next offline() needs fresh masks
+        self._protocols_ready = False
 
     def online(self, data):
         if self.model_info is None:

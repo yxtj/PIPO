@@ -1,5 +1,6 @@
 import time
 import socket
+from xml.parsers.expat import model
 
 import torch
 
@@ -47,11 +48,13 @@ def _finish(layers, n, do_offline, do_online, show_detail, t0, t1, t2):
 
 
 def run_server(host: str, port: int, n: int, cfg, do_offline: bool, do_online: bool):
-
     res_dir = cfg.common.resource.dir
     res_index = cfg.common.resource.index or None
 
+    # print("System mode: {}, protocol: {}, device: {}, HE-engine: {}".format(cfg.common.mode, cfg.server.protocol.name, cfg.common.device, cfg.common.he.backend))
+
     name, inshape, model, mhash = util.load_model(cfg)
+    print("Loaded model: {} (hash {}, input {})".format(name, mhash[:12], tuple(inshape)))
 
     # listening on port
     s = socket.create_server((host, port))
@@ -69,6 +72,8 @@ def run_server(host: str, port: int, n: int, cfg, do_offline: bool, do_online: b
         sets = 1 if do_online else n
         start = None if do_online else next_index(res_dir, server.model_name, res_index)
         for k in range(sets):
+            print("Generating resource set {}/{} ...".format(k+1, sets))
+            server.prepare()
             server.offline()
             if start is not None:
                 save_resource_set_server(cfg, res_dir, server.model_name, start + k,
@@ -76,12 +81,14 @@ def run_server(host: str, port: int, n: int, cfg, do_offline: bool, do_online: b
     else:
         # online-only: negotiate the set id with the client and restore it
         index = server.select_resource(res_dir, res_index)
-        server.restore_resource(res_dir, index)
+        resources = server.restore_resource(res_dir, index)
+        server.prepare(resources)
     t1 = time.time()
     print("Server offline finished")
 
     if do_online:
-        for _ in range(n):
+        for i in range(n):
+            print("Online round {}/{} ...".format(i+1, n))
             server.online()
         print("Server online finished")
     t2 = time.time()
@@ -96,6 +103,9 @@ def run_client(host: str, port: int, he, cfg, do_offline: bool, do_online: bool,
     device = cfg.common.device
     res_dir = cfg.common.resource.dir
     res_index = cfg.common.resource.index or None
+
+    # print("System mode: {}, device: {}, HE-engine: {}".format(cfg.common.mode, cfg.common.device, cfg.common.he.backend))
+
     # the server is expected to be up (default startup order: server first)
     s = socket.create_connection((host, port))
     print("Client is connecting to {}:{}".format(host, port))
@@ -131,6 +141,8 @@ def run_client(host: str, port: int, he, cfg, do_offline: bool, do_online: bool,
         sets = 1 if do_online else n
         start = None if do_online else next_index(res_dir, client.model_name, res_index)
         for k in range(sets):
+            print("Generating resource set {}/{} ...".format(k+1, sets))
+            client.prepare()
             client.offline()
             if start is not None:
                 save_resource_set_client(cfg, res_dir, client.model_name, start + k,
@@ -138,7 +150,8 @@ def run_client(host: str, port: int, he, cfg, do_offline: bool, do_online: bool,
     else:
         # online-only: negotiate the set id with the server and restore it
         index = client.select_resource(res_index)
-        client.restore_resource(res_dir, index)
+        resources = client.restore_resource(res_dir, index)
+        client.prepare(resources)
     t1 = time.time()
     print("Client offline finished")
 
@@ -147,8 +160,8 @@ def run_client(host: str, port: int, he, cfg, do_offline: bool, do_online: bool,
         if len(inshape) == 3 or len(inshape) == 1:
             input_shape = (1, *inshape)
         for i in range(n):
-            d = torch.rand(input_shape) if dataset is None else dataset[i]
-            d = d.to(device)
+            d = torch.rand(input_shape, device=device) if dataset is None else dataset[i].to(device)
+            print("Online round {}/{} ...".format(i+1, n))
             with torch.no_grad():
                 res = client.online(d)
             if verify:
@@ -156,7 +169,7 @@ def run_client(host: str, port: int, he, cfg, do_offline: bool, do_online: bool,
                     res2 = model(d)
                 diff = torch.abs(res - res2)
                 print("Verify {}: mean absolute difference: {:.6g}, mean relative difference: {:.6g}".format(
-                    i, diff.mean(), torch.nanmean(diff/res2)))
+                    i+1, diff.mean(), torch.nanmean(diff/res2)))
         print("Client online finished")
     t2 = time.time()
     s.close()

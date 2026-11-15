@@ -10,7 +10,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="pipo", description="PIPO privacy-preserving inference")
     parser.add_argument("role", choices=["server", "client"],
                         help="run as server or client")
-    parser.add_argument("mode", nargs="?", default=argparse.SUPPRESS,
+    parser.add_argument("mode", nargs="?", default=None,
                         choices=["offline", "standard", "online"],
                         help="offline | standard | online (default: from config, usually standard)")
     parser.add_argument("--config", default=None, help="config file (default: config.toml)")
@@ -35,7 +35,7 @@ def main():
     cfg = load_config(args.config)
     apply_args(cfg, args)
     # positional mode: overrides the config value only when given on the CLI
-    if hasattr(args, "mode"):
+    if args.mode is not None:
         cfg.common.mode = args.mode
     common = cfg.common
     # offline: generate and persist resources; standard: offline + online,

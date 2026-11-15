@@ -30,6 +30,8 @@ class Server():
         self.shortcuts = {}
         self.locals = []
         self.dependency = {}
+        # set by prepare_protocols(); offline() requires it and clears it
+        self._protocols_ready = False
         # protocol params (pad_ratio / noise_sigma) passed to layer setups
         self.pro_args = cfg.server.protocol.extra_args()
 
@@ -85,24 +87,20 @@ class Server():
         print("Resource set selected: {} (available: {})".format(chosen, available))
         return chosen
 
-    def restore_resource(self, res_dir, resource_id: int) -> None:
-        """Online mode: load this side's resource file and set the layers up
-        from it instead of drawing fresh randomness."""
+    def restore_resource(self, res_dir, resource_id: int) -> list:
+        """Online mode: load this side's resource file and return its per-layer
+        resource entries; the caller then runs prepare(resources) instead of
+        drawing fresh randomness."""
         if self.model_info is None:
-            raise RuntimeError("Server.setup() must be called before restore()")
-        entries = load_resource_set_server(self.cfg, res_dir, self.model_name, resource_id, self.model_info)
-        self.setup_layers(res=entries)
+            raise RuntimeError("Server.setup() must be called before restore_resource()")
+        resources = load_resource_set_server(self.cfg, res_dir, self.model_name, resource_id, self.model_info)
         print("Server resources restored (set {})".format(resource_id))
+        return resources
 
-    def setup_layers(self, res: list = None):
-        """Per-layer protocol setup. With res (the layer entries of a loaded
-        resource set, run mode 'online') the persisted masks/shuffles are
-        passed through setup kwargs instead of fresh randomness; the layer
-        order matters, because each layer's setup derives its propagated
-        state (mlast / rplast / kin) from the previous, already-restored
-        layer's protocol."""
+    def prepare(self, resources: list = None):
+        """Per-layer protocol preparation (masks and propagated state). If resources is None, draw fresh randomness"""
         if self.model_info is None:
-            raise RuntimeError("Server.setup() must be called before setup_layers()")
+            raise RuntimeError("Server.setup() must be called before prepare()")
         last_non_local = util.find_last_non_local_layer(len(self.layers), self.locals)
         last_lyr = None
         for i, lyr in enumerate(self.layers):
@@ -110,28 +108,24 @@ class Server():
             print('  setup {}: {}(inshape={}, outshape={}) ...'.format(i, name, lyr.ishape, lyr.oshape))
             # the last non-local layer hands its plaintext result to the
             # client, so the protocol must not mask or permute its output
-            if res is not None:
-                lyr.setup_res(last_lyr, is_last_layer=(i == last_non_local), entry=res[i],
+            if resources is not None:
+                lyr.setup_res(last_lyr, is_last_layer=(i == last_non_local), entry=resources[i],
                               **self.pro_args)
             else:
                 lyr.setup(last_lyr, is_last_layer=(i == last_non_local), **self.pro_args)
             last_lyr = lyr
+        self._protocols_ready = True
 
     def offline(self):
-        """Standard offline phase: per-layer setup interleaved with the
-        interactive offline round. May be called repeatedly (one resource set
-        per call)."""
+        """Per-layer offline round only; call prepare() first. May be called repeatedly, one prepare() per resource set."""
         if self.model_info is None:
             raise RuntimeError("Server.setup() must be called before offline()")
-        last_non_local = util.find_last_non_local_layer(len(self.layers), self.locals)
-        last_lyr = None
+        if not self._protocols_ready:
+            raise RuntimeError("Server.prepare() must be called before offline()")
         data = None
         for i, lyr in enumerate(self.layers):
             name = lyr.__class__.__name__
             print('  offline {}: {}(inshape={}, outshape={}) ...'.format(i, name, lyr.ishape, lyr.oshape))
-            # setup
-            lyr.setup(last_lyr, is_last_layer=(i == last_non_local), **self.pro_args)
-            last_lyr = lyr
             # offline
             data = lyr.offline() # get the input of this layer (i-th intermediate result)
             # handle shortcut connections: update the input buffer of shortcut-end layer
@@ -139,6 +133,8 @@ class Server():
                 for j in self.dependency[i]:
                     if j != i: # the own input fm is passed directly to the layer itself
                         self.layers[j].update_offline(i, data)
+        # one resource set per prepare: the next offline() needs fresh masks
+        self._protocols_ready = False
 
     def online(self):
         if self.model_info is None:
